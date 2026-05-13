@@ -21,7 +21,7 @@ pub struct TitleSearchQuery {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IDSearchQuery {
-    pub id: Option<i32>,
+    pub id: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]

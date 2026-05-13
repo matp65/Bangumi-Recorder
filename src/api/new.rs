@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
 use chrono::NaiveDate;
 use crate::auth_bearer::AuthUser;
+use crate::api::search::{IDSearchQuery, search_bangumi_by_id};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AddRecordResponse {
@@ -48,13 +49,49 @@ pub async fn add_record(
     let bangumi_id = match temp_local_bangumi_id {
         Ok(record) => record.id,
         Err(sqlx::Error::RowNotFound) => {
-            log::error!("Bangumi with external_id {} not found", bangumi_tv_id);
-            return Json(AddRecordResponse {
-                status: -2,
-                local_bangumi_id: Some(bangumi_tv_id),
-                bangumi_id: None,
-                date: None,
-            });
+
+            let _ = search_bangumi_by_id(
+                State(pool.clone()),
+                Json(IDSearchQuery { 
+                    id: Some(bangumi_tv_id) 
+                })
+            ).await;
+
+            match sqlx::query!(
+                "SELECT id FROM bangumi_info_easy WHERE external_id = ?",
+                bangumi_tv_id
+            )
+            .fetch_one(&pool)
+            .await            
+            {
+                Ok(record) => record.id,
+                Err(sqlx::Error::RowNotFound) => {
+                    log::error!("Bangumi with external_id {} not found after search", bangumi_tv_id);
+                    return Json(AddRecordResponse {
+                        status: -2,
+                        local_bangumi_id: Some(bangumi_tv_id),
+                        bangumi_id: None,
+                        date: None,
+                    });
+                }
+                Err(e) => {
+                    log::error!("Failed to query bangumi_info_easy after search: {}", e);
+                    return Json(AddRecordResponse {
+                        status: -1,
+                        local_bangumi_id: None,
+                        bangumi_id: None,
+                        date: None,
+                    });
+                }
+            }
+
+            // log::error!("Bangumi with external_id {} not found", bangumi_tv_id);
+            // return Json(AddRecordResponse {
+            //     status: -2,
+            //     local_bangumi_id: Some(bangumi_tv_id),
+            //     bangumi_id: None,
+            //     date: None,
+            // });
         }
         Err(e) => {
             log::error!("Failed to query bangumi_info_easy: {}", e);
