@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { IconList, IconSearch, IconUser, IconPoweroff } from '@arco-design/web-vue/es/icon'
+import { IconList, IconSearch, IconUser, IconPoweroff, IconSettings } from '@arco-design/web-vue/es/icon'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -31,7 +31,10 @@ function handleLogout() {
         </a-menu>
       </div>
       <div style="display: flex; align-items: center; gap: 12px">
-        <a-tag color="arcoblue">
+        <a-button type="text" @click="router.push({ name: 'Profile' })">
+          <template #icon><icon-settings /></template>
+        </a-button>
+        <a-tag color="arcoblue" style="cursor: pointer" @click="router.push({ name: 'Profile' })">
           <template #icon><icon-user /></template>
           {{ auth.username }}
         </a-tag>

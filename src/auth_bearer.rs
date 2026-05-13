@@ -8,7 +8,7 @@ use argon2::{
 
 use axum::{
     body::Body,
-    extract::{Json, State},
+    extract::{Extension, Json, State},
     http::{header::AUTHORIZATION, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -259,11 +259,7 @@ pub async fn register(
     };
 
     let raw_api_token = uuid::Uuid::new_v4().to_string();
-    let api_token_hash = {
-        let mut hasher = Sha256::new();
-        hasher.update(raw_api_token.as_bytes());
-        format!("{:x}", hasher.finalize())
-    };
+    let api_token_hash = hash_api_token(&raw_api_token);
 
     let insert_result = sqlx::query!(
         "INSERT INTO users (username, password_hash, api_token_hash) VALUES (?, ?, ?)",
@@ -314,6 +310,56 @@ pub async fn register(
             message: None,
         }),
     )
+}
+
+#[derive(Serialize)]
+pub struct TokenRegenerateResponse {
+    pub status: i32,
+    pub api_token: Option<String>,
+    pub message: Option<String>,
+}
+
+fn hash_api_token(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+pub async fn regenerate_api_token(
+    State(pool): State<MySqlPool>,
+    Extension(auth_user): Extension<AuthUser>,
+) -> impl IntoResponse {
+    let raw_token = uuid::Uuid::new_v4().to_string();
+    let token_hash = hash_api_token(&raw_token);
+
+    match sqlx::query!(
+        "UPDATE users SET api_token_hash = ? WHERE id = ?",
+        token_hash,
+        auth_user.user_id
+    )
+    .execute(&pool)
+    .await
+    {
+        Ok(_) => (
+            StatusCode::OK,
+            AxumJson(TokenRegenerateResponse {
+                status: 0,
+                api_token: Some(raw_token),
+                message: None,
+            }),
+        ),
+        Err(e) => {
+            log::error!("Failed to regenerate token: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AxumJson(TokenRegenerateResponse {
+                    status: -1,
+                    api_token: None,
+                    message: Some("Failed to regenerate token".to_string()),
+                }),
+            )
+        }
+    }
 }
 
 fn hash_password(

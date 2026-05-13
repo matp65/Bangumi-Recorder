@@ -47,6 +47,7 @@ async fn main() {
         .route("/record/get", post(api::get_recorder::get_recorder))
         .route("/record/list", get(api::list::list_recorder))
         .route("/record/detail_list", get(api::detail_list::get_detail_list))
+        .route("/auth/token/regenerate", post(auth_bearer::regenerate_api_token))
         .with_state(pool.clone())
         .layer(middleware::from_fn(move |req, next| {
             let jwt_secret = jwt_secret.clone();

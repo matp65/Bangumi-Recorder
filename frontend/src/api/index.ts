@@ -113,6 +113,12 @@ export interface DeleteRecorderResponse {
   message?: string
 }
 
+export interface TokenRegenerateResponse {
+  status: number
+  api_token?: string
+  message?: string
+}
+
 export const api = {
   login(username: string, password: string) {
     return request<LoginResponse>('/auth/login', {
@@ -171,6 +177,12 @@ export const api = {
     return request<DeleteRecorderResponse>('/api/v1/record/delete', {
       method: 'POST',
       body: { bangumi_id },
+    })
+  },
+
+  regenerateToken() {
+    return request<TokenRegenerateResponse>('/api/v1/auth/token/regenerate', {
+      method: 'POST',
     })
   },
 }
