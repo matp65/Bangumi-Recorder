@@ -243,6 +243,36 @@ pub async fn register(
         }
     };
 
+    match sqlx::query!("SELECT id FROM users WHERE username = ?", username)
+        .fetch_optional(&pool)
+        .await
+    {
+        Ok(Some(_)) => {
+            return (
+                StatusCode::CONFLICT,
+                AxumJson(RegisterResponse {
+                    status: -2,
+                    token: None,
+                    api_token: None,
+                    message: Some("Username already exists".to_string()),
+                }),
+            );
+        }
+        Ok(None) => {}
+        Err(e) => {
+            log::error!("DB error: {:?}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AxumJson(RegisterResponse {
+                    status: -1,
+                    token: None,
+                    api_token: None,
+                    message: Some("Database error".to_string()),
+                }),
+            );
+        }
+    };
+    
     let password_hash = match hash_password(password) {
         Ok(hash) => hash,
         Err(_) => {
