@@ -30,7 +30,7 @@ pub struct DetailListItem {
     pub episodes: Option<i32>,
     pub cover_url: Option<String>,
     pub recorder: Option<String>,
-    pub date: NaiveDate,
+    pub updated_at: NaiveDate,
     pub created_at: NaiveDate
 }
 
@@ -98,7 +98,7 @@ pub async fn get_detail_list(
                     episodes: r.episodes,
                     cover_url: r.cover_url,
                     recorder: r.recorder,
-                    date: r.updated_at.date(),
+                    updated_at: r.updated_at.date(),
                     created_at: r.created_at.date(),
                 });
             }
