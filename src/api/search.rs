@@ -345,10 +345,38 @@ pub async fn search_bangumi_by_id(
             .map(|e| e.text().collect::<String>().trim().to_string())
             .unwrap_or_default();
 
+        let title = document
+            .select(&Selector::parse(".infobox a.thickbox").unwrap())
+            .next()
+            .and_then(|a| a.value().attr("title"))
+            .map(|t| t.trim().to_string())
+            .or_else(|| {
+                let name_sel = Selector::parse("h1.nameSingle").unwrap();
+                document
+                    .select(&name_sel)
+                    .next()
+                    .map(|e| e.text().collect::<String>().trim().to_string())
+            })
+            .unwrap_or_default();
+
+        let cover_sel = Selector::parse(".infobox img.cover").unwrap();
+        let cover_url = document
+            .select(&cover_sel)
+            .next()
+            .and_then(|img| img.value().attr("src"))
+            .map(|src| {
+                if src.starts_with("//") {
+                    format!("https:{}", src)
+                } else {
+                    src.to_string()
+                }
+            })
+            .unwrap_or_default();
+
         BangumiItem {
             bangumi_id: id.to_string(),
-            title: String::new(),
-            cover_url: String::new(),
+            title,
+            cover_url,
             r#type,
             author,
             release_date,
@@ -365,8 +393,14 @@ pub async fn search_bangumi_by_id(
     .await
     {
         Ok(Some(row)) => {
-            result.title = row.title;
-            result.cover_url = row.cover_url.unwrap_or_default();
+            if !row.title.is_empty() {
+                result.title = row.title;
+            }
+            if let Some(ref db_cover) = row.cover_url {
+                if !db_cover.is_empty() {
+                    result.cover_url = db_cover.clone();
+                }
+            }
             row.id
         }
         Ok(None) => {
@@ -377,10 +411,10 @@ pub async fn search_bangumi_by_id(
                 VALUES (?, ?, ?, ?, ?)
                 "#,
                 id,
-                "",
+                result.title,
                 result.r#type,
                 "",
-                ""
+                result.cover_url
             )
             .execute(&pool)
             .await;
