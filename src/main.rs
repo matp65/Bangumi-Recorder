@@ -70,6 +70,7 @@ async fn main() {
         .nest("/api/v1", api_router)
         .nest("/api/v1/open", open_router)
         .nest_service("/assets", ServeDir::new("frontend/dist/assets"))
+        .fallback(get(index))
         .with_state(pool)
         .layer(
             CorsLayer::permissive()
