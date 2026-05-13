@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT \n            r.id,\n            r.bangumi_id AS local_bangumi_id,\n            b.external_id AS bangumi_id,\n            b.title,\n            b.type,\n            d.author,\n            d.episodes,\n            b.cover_url,\n            r.recorder,\n            r.updated_at,\n            r.created_at\n        FROM recordings r\n        LEFT JOIN bangumi_info_easy b\n            ON r.bangumi_id = b.id\n        LEFT JOIN bangumi_info_detailed d\n            ON d.bangumi_id = b.id\n        WHERE r.user_id = ?\n        ",
+  "query": "\n        SELECT \n            r.id,\n            r.bangumi_id AS local_bangumi_id,\n            b.external_id AS bangumi_id,\n            b.title,\n            b.type,\n            d.author,\n            d.episodes,\n            b.cover_url,\n            r.recorder,\n            r.status,\n            r.updated_at,\n            r.created_at\n        FROM recordings r\n        LEFT JOIN bangumi_info_easy b\n            ON r.bangumi_id = b.id\n        LEFT JOIN bangumi_info_detailed d\n            ON d.bangumi_id = b.id\n        WHERE r.user_id = ?\n        ",
   "describe": {
     "columns": [
       {
@@ -86,6 +86,15 @@
       },
       {
         "ordinal": 9,
+        "name": "status",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL",
+          "max_size": 4
+        }
+      },
+      {
+        "ordinal": 10,
         "name": "updated_at",
         "type_info": {
           "type": "Datetime",
@@ -94,7 +103,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "created_at",
         "type_info": {
           "type": "Datetime",
@@ -117,8 +126,9 @@
       true,
       true,
       false,
+      false,
       false
     ]
   },
-  "hash": "4fb3eaf590f1c09fa79baa3da6c55b8a2689938d800d8240afc55a58213c3fb0"
+  "hash": "5cb85cb76519ce0d09fe765afe45bc8a60e632d8511aa21423c68bf8e7bc66da"
 }

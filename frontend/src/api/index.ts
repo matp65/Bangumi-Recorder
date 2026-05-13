@@ -39,6 +39,10 @@ export interface RegisterResponse {
   message?: string
 }
 
+export interface ConfigResponse {
+  allow_register: boolean
+}
+
 export interface BangumiSearchItem {
   bangumi_id: string
   title: string
@@ -134,6 +138,10 @@ export const api = {
       method: 'POST',
       body: { username, password },
     })
+  },
+
+  getConfig() {
+    return request<ConfigResponse>('/auth/config')
   },
 
   searchBangumi(title: string, page?: number) {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { Message } from '@arco-design/web-vue'
@@ -9,6 +9,7 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const isLogin = ref(true)
+const allowRegister = ref(true)
 
 const form = reactive({
   username: '',
@@ -16,6 +17,16 @@ const form = reactive({
 })
 
 const loading = ref(false)
+
+onMounted(async () => {
+  try {
+    const config = await auth.getConfig()
+    allowRegister.value = config.allow_register
+  } catch (error) {
+    console.error('Failed to fetch config:', error)
+    allowRegister.value = true // Default to true if request fails
+  }
+})
 
 async function handleSubmit() {
   if (!form.username || !form.password) {
@@ -84,7 +95,7 @@ async function handleSubmit() {
       </a-form>
 
       <div style="text-align: center">
-        <a-link @click="isLogin = !isLogin">
+        <a-link v-if="allowRegister" @click="isLogin = !isLogin">
           {{ isLogin ? '没有账户？去注册' : '已有账户？去登录' }}
         </a-link>
       </div>

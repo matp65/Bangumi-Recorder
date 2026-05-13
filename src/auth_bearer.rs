@@ -228,6 +228,23 @@ pub async fn register(
     State(pool): State<MySqlPool>,
     Json(payload): Json<RegisterRequest>,
 ) -> impl IntoResponse {
+    // Check if registration is allowed
+    let allow_register = std::env::var("ALLOW_REGISTER")
+        .unwrap_or_else(|_| "true".to_string())
+        .to_lowercase();
+    
+    if allow_register == "false" {
+        return (
+            StatusCode::FORBIDDEN,
+            AxumJson(RegisterResponse {
+                status: -6,
+                token: None,
+                api_token: None,
+                message: Some("Registration is disabled".to_string()),
+            }),
+        );
+    }
+
     let (username, password) = match (payload.username, payload.password) {
         (Some(u), Some(p)) => (u, p),
         _ => {
@@ -404,4 +421,22 @@ fn hash_password(
     )?;
 
     Ok(password_hash.to_string())
+}
+
+#[derive(Serialize)]
+pub struct ConfigResponse {
+    pub allow_register: bool,
+}
+
+pub async fn get_config() -> impl IntoResponse {
+    let allow_register = std::env::var("ALLOW_REGISTER")
+        .unwrap_or_else(|_| "true".to_string())
+        .to_lowercase();
+    
+    (
+        StatusCode::OK,
+        AxumJson(ConfigResponse {
+            allow_register: allow_register != "false",
+        }),
+    )
 }

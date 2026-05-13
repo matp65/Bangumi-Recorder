@@ -67,6 +67,7 @@ async fn main() {
         .route("/", get(index))
         .route("/auth/login", post(auth_bearer::login))
         .route("/auth/register", post(auth_bearer::register))
+        .route("/auth/config", get(auth_bearer::get_config))
         .nest("/api/v1", api_router)
         .nest("/api/v1/open", open_router)
         .nest_service("/assets", ServeDir::new("frontend/dist/assets"))

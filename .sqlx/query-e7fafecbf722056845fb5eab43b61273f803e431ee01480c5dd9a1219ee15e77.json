@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "SELECT recorder, updated_at FROM recordings WHERE user_id = ? AND bangumi_id = ?",
+  "query": "SELECT recorder, status, updated_at FROM recordings WHERE user_id = ? AND bangumi_id = ?",
   "describe": {
     "columns": [
       {
@@ -14,6 +14,15 @@
       },
       {
         "ordinal": 1,
+        "name": "status",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL",
+          "max_size": 4
+        }
+      },
+      {
+        "ordinal": 2,
         "name": "updated_at",
         "type_info": {
           "type": "Datetime",
@@ -27,8 +36,9 @@
     },
     "nullable": [
       true,
+      false,
       false
     ]
   },
-  "hash": "168ddb5aed1c123ad50d3b2753c6b813c814caaf067efd0ccd5f6c667415436d"
+  "hash": "e7fafecbf722056845fb5eab43b61273f803e431ee01480c5dd9a1219ee15e77"
 }

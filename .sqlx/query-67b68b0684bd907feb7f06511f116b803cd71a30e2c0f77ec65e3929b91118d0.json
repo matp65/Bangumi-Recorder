@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT \n            r.id,\n            r.bangumi_id AS local_bangumi_id,\n            b.external_id AS bangumi_id,\n            r.recorder,\n            r.updated_at\n        FROM recordings r\n        LEFT JOIN bangumi_info_easy b\n            ON r.bangumi_id = b.id\n        WHERE r.user_id = ?\n        ",
+  "query": "\n        SELECT \n            r.id,\n            r.bangumi_id AS local_bangumi_id,\n            b.external_id AS bangumi_id,\n            r.recorder,\n            r.status,\n            r.updated_at\n        FROM recordings r\n        LEFT JOIN bangumi_info_easy b\n            ON r.bangumi_id = b.id\n        WHERE r.user_id = ?\n        ",
   "describe": {
     "columns": [
       {
@@ -41,6 +41,15 @@
       },
       {
         "ordinal": 4,
+        "name": "status",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL",
+          "max_size": 4
+        }
+      },
+      {
+        "ordinal": 5,
         "name": "updated_at",
         "type_info": {
           "type": "Datetime",
@@ -57,8 +66,9 @@
       false,
       true,
       true,
+      false,
       false
     ]
   },
-  "hash": "260956353e68fa355d5ee098f1908dcac0ebb5f7f1ab00d07cf83bedfc1d9aba"
+  "hash": "67b68b0684bd907feb7f06511f116b803cd71a30e2c0f77ec65e3929b91118d0"
 }

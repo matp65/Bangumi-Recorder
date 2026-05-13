@@ -34,6 +34,10 @@ export const useAuthStore = defineStore('auth', () => {
     return false
   }
 
+  async function getConfig() {
+    return api.getConfig()
+  }
+
   function logout() {
     token.value = null
     username.value = null
@@ -41,5 +45,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('username')
   }
 
-  return { token, username, isLoggedIn, login, register, logout }
+  return { token, username, isLoggedIn, login, register, getConfig, logout }
 })
