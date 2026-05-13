@@ -2,8 +2,8 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, type BangumiItem, type GetRecorderResponse } from '../api'
-import { Message } from '@arco-design/web-vue'
-import { IconArrowLeft } from '@arco-design/web-vue/es/icon'
+import { Message, Modal } from '@arco-design/web-vue'
+import { IconArrowLeft, IconDelete } from '@arco-design/web-vue/es/icon'
 
 const props = defineProps<{ bangumi_id: string }>()
 const router = useRouter()
@@ -12,6 +12,7 @@ const info = ref<BangumiItem | null>(null)
 const recorder = ref<GetRecorderResponse | null>(null)
 const loading = ref(true)
 const updating = ref(false)
+const removing = ref(false)
 const epInput = ref<number | undefined>(undefined)
 const timeInput = ref('00:00')
 
@@ -90,6 +91,30 @@ async function handleUpdate() {
   }
 }
 
+async function handleDelete() {
+  Modal.warning({
+    title: '确认删除',
+    content: `确定要删除「${info.value?.title || '该番剧'}」的追番记录吗？`,
+    hideCancel: false,
+    async onOk() {
+      removing.value = true
+      try {
+        const res = await api.deleteRecord(parseInt(props.bangumi_id))
+        if (res.status === 0) {
+          Message.success('删除成功')
+          router.push('/')
+        } else {
+          Message.error(res.message || '删除失败')
+        }
+      } catch {
+        Message.error('网络请求失败')
+      } finally {
+        removing.value = false
+      }
+    },
+  })
+}
+
 onMounted(fetchData)
 </script>
 
@@ -150,6 +175,18 @@ onMounted(fetchData)
           </div>
 
           <a-divider />
+
+          <div style="display: flex; gap: 12px; margin-bottom: 24px">
+            <a-button
+              type="outline"
+              status="danger"
+              :loading="removing"
+              @click="handleDelete"
+            >
+              <template #icon><icon-delete /></template>
+              删除此追番
+            </a-button>
+          </div>
 
           <div style="margin-top: 24px">
             <h3 style="font-size: 16px; color: #1d2129; margin-bottom: 16px">追番进度</h3>

@@ -108,6 +108,11 @@ export interface UpdateRecorderResponse {
   message?: string
 }
 
+export interface DeleteRecorderResponse {
+  status: number
+  message?: string
+}
+
 export const api = {
   login(username: string, password: string) {
     return request<LoginResponse>('/auth/login', {
@@ -159,6 +164,13 @@ export const api = {
     return request<UpdateRecorderResponse>('/api/v1/record/update', {
       method: 'POST',
       body: { bangumi_id, recorder },
+    })
+  },
+
+  deleteRecord(bangumi_id: number) {
+    return request<DeleteRecorderResponse>('/api/v1/record/delete', {
+      method: 'POST',
+      body: { bangumi_id },
     })
   },
 }

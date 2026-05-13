@@ -2,7 +2,8 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, type DetailListItem } from '../api'
-import { Message } from '@arco-design/web-vue'
+import { Message, Modal } from '@arco-design/web-vue'
+import { IconDelete } from '@arco-design/web-vue/es/icon'
 import dayjs from 'dayjs'
 
 const router = useRouter()
@@ -55,6 +56,33 @@ async function fetchRecords() {
 
 function goDetail(bangumiId: string) {
   router.push({ name: 'Detail', params: { bangumi_id: bangumiId } })
+}
+
+const deleting = ref<Record<string, boolean>>({})
+
+async function handleDelete(item: DetailListItem) {
+  if (!item.bangumi_id) return
+  Modal.warning({
+    title: '确认删除',
+    content: `确定要删除「${item.title || '未知标题'}」的追番记录吗？`,
+    hideCancel: false,
+    async onOk() {
+      deleting.value[item.id] = true
+      try {
+        const res = await api.deleteRecord(parseInt(item.bangumi_id!))
+        if (res.status === 0) {
+          Message.success('删除成功')
+          records.value = records.value.filter(r => r.id !== item.id)
+        } else {
+          Message.error(res.message || '删除失败')
+        }
+      } catch {
+        Message.error('网络请求失败')
+      } finally {
+        deleting.value[item.id] = false
+      }
+    },
+  })
 }
 
 onMounted(fetchRecords)
@@ -114,6 +142,17 @@ onMounted(fetchRecords)
               <div style="font-size: 12px; color: #c9cdd4">
                 {{ dayjs(item.updated_at).format('YYYY-MM-DD') }}
               </div>
+            </div>
+            <div style="flex-shrink: 0; display: flex; align-items: flex-start">
+              <a-button
+                type="text"
+                status="danger"
+                size="small"
+                :loading="deleting[item.id]"
+                @click.stop="handleDelete(item)"
+              >
+                <template #icon><icon-delete /></template>
+              </a-button>
             </div>
           </div>
         </a-card>

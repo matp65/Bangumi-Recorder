@@ -61,24 +61,59 @@ pub async fn update_user_recorder (
         }
     };
 
+    let recording = match sqlx::query!(
+        "SELECT id FROM recordings WHERE user_id = ? AND bangumi_id = ?",
+        auth_user.user_id,
+        local_bangumi_id
+    )
+    .fetch_optional(&pool)
+    .await
+    {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            return Json(UpdateRecorderResponse {
+                status: -3,
+                message: Some("Recording not found".to_string())
+            });
+        }
+        Err(e) => {
+            log::error!("Failed to query recording: {}", e);
+            return Json(UpdateRecorderResponse {
+                status: -2,
+                message: Some("Database error".to_string())
+            });
+        }
+    };
+
     match sqlx::query!(
-        "UPDATE recordings SET recorder = ? WHERE bangumi_id = ? AND user_id = ?",
+        "UPDATE recordings SET recorder = ? WHERE id = ?",
         recorder,
-        local_bangumi_id,
-        auth_user.user_id
+        recording.id
     )
     .execute(&pool)
     .await
     {
-        Ok(_) => Json(UpdateRecorderResponse {
-            status: 0,
-            message: Some("Recorder updated successfully".to_string())
-        }),
+        Ok(_) => {
+            let _ = sqlx::query!(
+                "INSERT INTO recording_logs (recording_id, user_id, bangumi_id, recorder) VALUES (?, ?, ?, ?)",
+                recording.id,
+                auth_user.user_id,
+                local_bangumi_id,
+                recorder
+            )
+            .execute(&pool)
+            .await;
+
+            Json(UpdateRecorderResponse {
+                status: 0,
+                message: Some("Recorder updated successfully".to_string())
+            })
+        }
         Err(e) => {
             log::warn!("Failed to update recorder for bangumi_id {}: {:?}", bangumi_id, e);
             Json(UpdateRecorderResponse {
                 status: -2,
-                message: Some(format!("Database error"))
+                message: Some("Database error".to_string())
             })
         }
     }
