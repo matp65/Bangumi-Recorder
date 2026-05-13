@@ -112,7 +112,7 @@ onMounted(fetchRecords)
                 <a-tag color="arcoblue" size="small">进度: {{ item.recorder }}</a-tag>
               </div>
               <div style="font-size: 12px; color: #c9cdd4">
-                {{ dayjs(item.date).format('YYYY-MM-DD') }}
+                {{ dayjs(item.updated_at).format('YYYY-MM-DD') }}
               </div>
             </div>
           </div>

@@ -35,6 +35,7 @@ export interface LoginResponse {
 export interface RegisterResponse {
   status: number
   token?: string
+  api_token?: string
   message?: string
 }
 
@@ -78,7 +79,7 @@ export interface DetailListItem {
   episodes: number | null
   cover_url: string | null
   recorder: string | null
-  date: string
+  updated_at: string
   created_at: string
 }
 

@@ -148,6 +148,16 @@ pub async fn add_record(
             date: Some(chrono::Utc::now().naive_utc().date()),
         }),
         Err(e) => {
+            if let sqlx::Error::Database(db_err) = &e {
+                if db_err.constraint() == Some("uk_recordings_user_bangumi") {
+                    return Json(AddRecordResponse {
+                        status: -3,
+                        local_bangumi_id: Some(bangumi_id),
+                        bangumi_id: Some(bangumi_tv_id),
+                        date: None,
+                    });
+                }
+            }
             log::error!("Failed to add record: {}", e);
             Json(AddRecordResponse {
                 status: -1,

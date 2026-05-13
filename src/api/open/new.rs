@@ -157,11 +157,21 @@ pub async fn add_record_open(
     {
         Ok(_) => Json(AddRecordResponse {
             status: 0,
-            local_bangumi_id: None,
+            local_bangumi_id: Some(bangumi_id),
             bangumi_id: Some(bangumi_tv_id),
             date: Some(chrono::Utc::now().naive_utc().date()),
         }),
         Err(e) => {
+            if let sqlx::Error::Database(db_err) = &e {
+                if db_err.constraint() == Some("uk_recordings_user_bangumi") {
+                    return Json(AddRecordResponse {
+                        status: -3,
+                        local_bangumi_id: Some(bangumi_id),
+                        bangumi_id: Some(bangumi_tv_id),
+                        date: None,
+                    });
+                }
+            }
             log::error!("Failed to add record: {}", e);
             Json(AddRecordResponse {
                 status: -1,

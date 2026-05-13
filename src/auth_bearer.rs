@@ -18,6 +18,7 @@ use bcrypt::verify as bcrypt_verify;
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::MySqlPool;
 
 #[derive(Deserialize)]
@@ -43,6 +44,7 @@ pub struct RegisterRequest {
 pub struct RegisterResponse {
     pub status: i32,
     pub token: Option<String>,
+    pub api_token: Option<String>,
     pub message: Option<String>
 }
 
@@ -234,6 +236,7 @@ pub async fn register(
                 AxumJson(RegisterResponse {
                     status: -1,
                     token: None,
+                    api_token: None,
                     message: Some("Please enter username or password".to_string()),
                 }),
             );
@@ -248,45 +251,31 @@ pub async fn register(
                 AxumJson(RegisterResponse {
                     status: -1,
                     token: None,
+                    api_token: None,
                     message: Some("Failed to hash password".to_string()),
                 }),
             );
         }
     };
 
-    let uuid = uuid::Uuid::new_v4().to_string();
-    let token = match build_claims(0, username.clone(), &std::env::var("JWT_SECRET").expect("JWT_SECRET must be set")) {
-        Ok(token) => token,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                AxumJson(RegisterResponse {
-                    status: -1,
-                    token: None,
-                    message: Some("Failed to generate token".to_string()),
-                }),
-            );
-        }
+    let raw_api_token = uuid::Uuid::new_v4().to_string();
+    let api_token_hash = {
+        let mut hasher = Sha256::new();
+        hasher.update(raw_api_token.as_bytes());
+        format!("{:x}", hasher.finalize())
     };
-    match sqlx::query!(
+
+    let insert_result = sqlx::query!(
         "INSERT INTO users (username, password_hash, api_token_hash) VALUES (?, ?, ?)",
         username,
         password_hash,
-        uuid
+        api_token_hash
     )
     .execute(&pool)
-    .await
-    {
-        Ok(_) => {
-            (
-                StatusCode::OK,
-                AxumJson(RegisterResponse {
-                    status: 0,
-                    token: Some(token),
-                    message: None,
-                }),
-            )
-        }
+    .await;
+
+    let user_id = match insert_result {
+        Ok(res) => res.last_insert_id() as i64,
         Err(e) => {
             log::error!("DB error: {:?}", e);
             return (
@@ -294,11 +283,37 @@ pub async fn register(
                 AxumJson(RegisterResponse {
                     status: -1,
                     token: None,
+                    api_token: None,
                     message: Some("Failed to register user".to_string()),
                 }),
             );
         }
-    }
+    };
+
+    let token = match build_claims(user_id, username.clone(), &std::env::var("JWT_SECRET").expect("JWT_SECRET must be set")) {
+        Ok(token) => token,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AxumJson(RegisterResponse {
+                    status: -1,
+                    token: None,
+                    api_token: None,
+                    message: Some("Failed to generate token".to_string()),
+                }),
+            );
+        }
+    };
+
+    (
+        StatusCode::OK,
+        AxumJson(RegisterResponse {
+            status: 0,
+            token: Some(token),
+            api_token: Some(raw_api_token),
+            message: None,
+        }),
+    )
 }
 
 fn hash_password(

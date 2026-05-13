@@ -28,9 +28,22 @@ pub async fn get_recorder(
     Json(params): Json<GetRecorderQuery>
 ) -> Json<GetRecorderResponse> {
 
+    let bangumi_external_id = match params.bangumi_id {
+        Some(id) => id,
+        None => {
+            return Json(GetRecorderResponse {
+                status: -2,
+                local_bangumi_id: None,
+                bangumi_id: None,
+                recorder: None,
+                date: None,
+            });
+        }
+    };
+
     let temp_local_bangumi_id = sqlx::query!(
         "SELECT id FROM bangumi_info_easy WHERE external_id = ?",
-        params.bangumi_id.unwrap()
+        bangumi_external_id
     )
     .fetch_optional(&pool)
     .await;
@@ -38,11 +51,11 @@ pub async fn get_recorder(
     let local_bangumi_id = match temp_local_bangumi_id {
         Ok(Some(record)) => record.id,
         Ok(None) => {
-            log::error!("Bangumi with external_id {} not found", params.bangumi_id.unwrap());
+            log::error!("Bangumi with external_id {} not found", bangumi_external_id);
             return Json(GetRecorderResponse { 
                 status: -2,
                 local_bangumi_id: None,
-                bangumi_id: Some(params.bangumi_id.unwrap()),
+                bangumi_id: Some(bangumi_external_id),
                 recorder: None,
                 date: None
             });
@@ -52,7 +65,7 @@ pub async fn get_recorder(
             return Json(GetRecorderResponse { 
                 status: -2,
                 local_bangumi_id: None,
-                bangumi_id: Some(params.bangumi_id.unwrap()),
+                bangumi_id: Some(bangumi_external_id),
                 recorder: None,
                 date: None
             });
@@ -71,7 +84,7 @@ pub async fn get_recorder(
             Json(GetRecorderResponse { 
                 status: 0, 
                 local_bangumi_id: Some(local_bangumi_id),
-                bangumi_id: Some(params.bangumi_id.unwrap()),
+                bangumi_id: Some(bangumi_external_id),
                 recorder: r.recorder,
                 date: Some(r.updated_at.date()),
             })
@@ -80,7 +93,7 @@ pub async fn get_recorder(
             Json(GetRecorderResponse { 
                 status: 0,
                 local_bangumi_id: Some(local_bangumi_id),
-                bangumi_id: Some(params.bangumi_id.unwrap()),
+                bangumi_id: Some(bangumi_external_id),
                 recorder: None,
                 date: None,
             })
@@ -89,7 +102,7 @@ pub async fn get_recorder(
             Json(GetRecorderResponse {
                 status: -2,
                 local_bangumi_id: Some(local_bangumi_id),
-                bangumi_id: Some(params.bangumi_id.unwrap()),
+                bangumi_id: Some(bangumi_external_id),
                 recorder: None,
                 date: None,
             })

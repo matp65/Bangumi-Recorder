@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{Query, State},
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -36,7 +36,7 @@ pub struct DetailListItem {
 
 pub async fn get_detail_list(
     State(pool): State<MySqlPool>,
-    Json(params): Json<DetailListQuery>,
+    Query(params): Query<DetailListQuery>,
 ) -> Json<DetailListResponse> {
 
     if params.token.is_none() {
