@@ -19,6 +19,7 @@ pub struct GetRecorderResponse {
     pub local_bangumi_id: Option<u32>,
     pub bangumi_id: Option<u32>,
     pub recorder: Option<String>,
+    pub user_status: Option<i8>,
     pub date: Option<NaiveDate>
 }
 
@@ -33,6 +34,7 @@ pub async fn get_recorder(
             local_bangumi_id: None,
             bangumi_id: None,
             recorder: None,
+            user_status: None,
             date: None 
         })
     }
@@ -53,6 +55,7 @@ pub async fn get_recorder(
                 local_bangumi_id: None,
                 bangumi_id: Some(params.bangumi_id.unwrap()),
                 recorder: None,
+                user_status: None,
                 date: None
             });
         }
@@ -63,6 +66,7 @@ pub async fn get_recorder(
                 local_bangumi_id: None,
                 bangumi_id: Some(params.bangumi_id.unwrap()),
                 recorder: None,
+                user_status: None,
                 date: None
             });
         }
@@ -78,13 +82,14 @@ pub async fn get_recorder(
                 local_bangumi_id: None,
                 bangumi_id: None,
                 recorder: None,
+                user_status: None,
                 date: None
             });
         }
     };
 
     match sqlx::query!(
-        "SELECT recorder, updated_at FROM recordings WHERE user_id = ? AND bangumi_id = ?",
+        "SELECT recorder, status, updated_at FROM recordings WHERE user_id = ? AND bangumi_id = ?",
         user_id,
         local_bangumi_id
     )
@@ -97,6 +102,7 @@ pub async fn get_recorder(
                 local_bangumi_id: Some(local_bangumi_id),
                 bangumi_id: Some(params.bangumi_id.unwrap()),
                 recorder: r.recorder,
+                user_status: Some(r.status),
                 date: Some(r.updated_at.date()),
             })
         }
@@ -106,6 +112,7 @@ pub async fn get_recorder(
                 local_bangumi_id: Some(local_bangumi_id),
                 bangumi_id: Some(params.bangumi_id.unwrap()),
                 recorder: None,
+                user_status: None,
                 date: None,
             })
         }
@@ -115,6 +122,7 @@ pub async fn get_recorder(
                 local_bangumi_id: Some(local_bangumi_id),
                 bangumi_id: Some(params.bangumi_id.unwrap()),
                 recorder: None,
+                user_status: None,
                 date: None,
             })
         }

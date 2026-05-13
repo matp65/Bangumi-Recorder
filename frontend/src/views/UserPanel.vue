@@ -29,7 +29,18 @@ async function handleRegenerate() {
 async function handleCopy() {
   if (!apiToken.value) return
   try {
-    await navigator.clipboard.writeText(apiToken.value)
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(apiToken.value)
+    } else {
+      const textarea = document.createElement('textarea')
+      textarea.value = apiToken.value
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
     Message.success('已复制到剪贴板')
   } catch {
     Message.error('复制失败')

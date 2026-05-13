@@ -11,7 +11,8 @@ use crate::auth_bearer::AuthUser;
 #[derive(Deserialize)]
 pub struct UpdateRecorderQuery {
     pub bangumi_id: Option<i32>,
-    pub recorder: Option<String>
+    pub recorder: Option<String>,
+    pub user_status: Option<i32>,
 }
 
 #[derive(Serialize)]
@@ -26,7 +27,7 @@ pub async fn update_user_recorder (
     Json(params): Json<UpdateRecorderQuery>,
 ) -> Json<UpdateRecorderResponse> {
 
-    if params.bangumi_id.is_none() || params.recorder.is_none() {
+    if params.bangumi_id.is_none() || (params.recorder.is_none() && params.user_status.is_none()) {
         return Json(UpdateRecorderResponse {
             status: -1,
             message: Some("Missing required parameters".to_string())
@@ -34,7 +35,6 @@ pub async fn update_user_recorder (
     }
 
     let bangumi_id = params.bangumi_id.unwrap();
-    let recorder = params.recorder.as_ref().unwrap();
 
     let temp_local_bangumi_id = sqlx::query!(
         "SELECT id FROM bangumi_info_easy WHERE external_id = ?",
@@ -85,36 +85,58 @@ pub async fn update_user_recorder (
         }
     };
 
-    match sqlx::query!(
-        "UPDATE recordings SET recorder = ? WHERE id = ?",
-        recorder,
-        recording.id
-    )
-    .execute(&pool)
-    .await
-    {
-        Ok(_) => {
-            let _ = sqlx::query!(
-                "INSERT INTO recording_logs (recording_id, user_id, bangumi_id, recorder) VALUES (?, ?, ?, ?)",
-                recording.id,
-                auth_user.user_id,
-                local_bangumi_id,
-                recorder
-            )
-            .execute(&pool)
-            .await;
-
-            Json(UpdateRecorderResponse {
-                status: 0,
-                message: Some("Recorder updated successfully".to_string())
-            })
-        }
-        Err(e) => {
-            log::warn!("Failed to update recorder for bangumi_id {}: {:?}", bangumi_id, e);
-            Json(UpdateRecorderResponse {
-                status: -2,
-                message: Some("Database error".to_string())
-            })
+    if let Some(recorder) = params.recorder.as_ref() {
+        match sqlx::query!(
+            "UPDATE recordings SET recorder = ? WHERE id = ?",
+            recorder,
+            recording.id
+        )
+        .execute(&pool)
+        .await
+        {
+            Ok(_) => {
+                let _ = sqlx::query!(
+                    "INSERT INTO recording_logs (recording_id, user_id, bangumi_id, recorder) VALUES (?, ?, ?, ?)",
+                    recording.id,
+                    auth_user.user_id,
+                    local_bangumi_id,
+                    recorder
+                )
+                .execute(&pool)
+                .await;
+            }
+            Err(e) => {
+                log::warn!("Failed to update recorder for bangumi_id {}: {:?}", bangumi_id, e);
+                return Json(UpdateRecorderResponse {
+                    status: -2,
+                    message: Some("Database error".to_string())
+                });
+            }
         }
     }
+
+    if let Some(status_val) = params.user_status {
+        match sqlx::query!(
+            "UPDATE recordings SET status = ? WHERE id = ?",
+            status_val,
+            recording.id
+        )
+        .execute(&pool)
+        .await
+        {
+            Ok(_) => {}
+            Err(e) => {
+                log::warn!("Failed to update status for bangumi_id {}: {:?}", bangumi_id, e);
+                return Json(UpdateRecorderResponse {
+                    status: -2,
+                    message: Some("Database error".to_string())
+                });
+            }
+        }
+    }
+
+    Json(UpdateRecorderResponse {
+        status: 0,
+        message: Some("Updated successfully".to_string())
+    })
 }

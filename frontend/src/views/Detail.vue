@@ -15,6 +15,7 @@ const updating = ref(false)
 const removing = ref(false)
 const epInput = ref<number | undefined>(undefined)
 const timeInput = ref('00:00')
+const userStatus = ref<number>(1)
 
 const typeLabels: Record<number, string> = {
   1: 'TV',
@@ -25,6 +26,14 @@ const typeLabels: Record<number, string> = {
   6: 'Music',
   7: '书籍',
   8: '其他',
+}
+
+const statusLabels: Record<number, string> = {
+  0: '想看',
+  1: '在看',
+  2: '看过',
+  3: '搁置',
+  4: '抛弃',
 }
 
 const progressText = computed(() => {
@@ -51,6 +60,9 @@ async function fetchData() {
       } else {
         epInput.value = undefined
         timeInput.value = '00:00'
+      }
+      if (recordRes.user_status !== undefined && recordRes.user_status !== null) {
+        userStatus.value = recordRes.user_status
       }
     }
   } catch {
@@ -88,6 +100,16 @@ async function handleUpdate() {
     Message.error('网络请求失败')
   } finally {
     updating.value = false
+  }
+}
+
+async function handleStatusChange(value: number) {
+  userStatus.value = value
+  const res = await api.updateRecord(parseInt(props.bangumi_id), undefined, value)
+  if (res.status === 0) {
+    Message.success('状态更新成功')
+  } else {
+    Message.error(res.message || '状态更新失败')
   }
 }
 
@@ -186,6 +208,24 @@ onMounted(fetchData)
               <template #icon><icon-delete /></template>
               删除此追番
             </a-button>
+          </div>
+
+          <div style="margin-top: 24px">
+            <h3 style="font-size: 16px; color: #1d2129; margin-bottom: 16px">观看状态</h3>
+            <div style="display: flex; align-items: center; gap: 12px">
+              <a-select
+                :model-value="userStatus"
+                :style="{ width: '120px' }"
+                @change="(v: any) => handleStatusChange(Number(v))"
+              >
+                <a-option v-for="(label, val) in statusLabels" :key="Number(val)" :value="Number(val)">
+                  {{ label }}
+                </a-option>
+              </a-select>
+              <a-tag :color="userStatus === 2 ? 'green' : userStatus === 1 ? 'arcoblue' : 'gray'">
+                {{ statusLabels[userStatus] || '未知' }}
+              </a-tag>
+            </div>
           </div>
 
           <div style="margin-top: 24px">

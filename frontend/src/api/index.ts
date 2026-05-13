@@ -100,6 +100,7 @@ export interface GetRecorderResponse {
   local_bangumi_id?: number
   bangumi_id?: number
   recorder?: string
+  user_status?: number
   date?: string
 }
 
@@ -166,10 +167,10 @@ export const api = {
     })
   },
 
-  updateRecord(bangumi_id: number, recorder: string) {
+  updateRecord(bangumi_id: number, recorder?: string, user_status?: number) {
     return request<UpdateRecorderResponse>('/api/v1/record/update', {
       method: 'POST',
-      body: { bangumi_id, recorder },
+      body: { bangumi_id, recorder, user_status },
     })
   },
 
