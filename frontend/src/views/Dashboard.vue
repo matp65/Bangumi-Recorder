@@ -22,11 +22,24 @@ const typeLabels: Record<number, string> = {
 }
 
 const statusLabels: Record<number, string> = {
-  1: '想看',
-  2: '在看',
-  3: '看过',
-  4: '搁置',
-  5: '抛弃',
+  0: '想看',
+  1: '在看',
+  2: '看过',
+  3: '搁置',
+  4: '抛弃',
+}
+
+function getStatusLabel(status: number | null | undefined) {
+  if (status === null || status === undefined) return ''
+  return statusLabels[status] || ''
+}
+
+function getStatusColor(status: number | null | undefined) {
+  if (status === 2) return 'green'
+  if (status === 1) return 'arcoblue'
+  if (status === 3) return 'orange'
+  if (status === 4) return 'red'
+  return 'gray'
 }
 
 function getTypeLabel(type: number | null) {
@@ -134,6 +147,7 @@ onMounted(fetchRecords)
                 {{ item.title || '未知标题' }}
               </div>
               <div style="font-size: 12px; color: #86909c; margin-bottom: 8px">
+                <a-tag :color="getStatusColor(item.user_status)" size="small" style="margin-right: 4px">{{ getStatusLabel(item.user_status) }}</a-tag>
                 {{ getTypeLabel(item.type) }} · {{ item.episodes ? item.episodes + '话' : '' }}
               </div>
               <div v-if="item.recorder" style="margin-bottom: 4px">

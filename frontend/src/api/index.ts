@@ -79,6 +79,7 @@ export interface DetailListItem {
   episodes: number | null
   cover_url: string | null
   recorder: string | null
+  user_status?: number
   updated_at: string
   created_at: string
 }

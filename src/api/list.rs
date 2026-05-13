@@ -21,6 +21,7 @@ pub struct RecorderItem {
     pub local_bangumi_id: u32,
     pub bangumi_id: Option<String>,
     pub recorder: Option<String>,
+    pub user_status: Option<i8>,
     pub date: NaiveDate
 }
 
@@ -38,6 +39,7 @@ pub async fn list_recorder(
             r.bangumi_id AS local_bangumi_id,
             b.external_id AS bangumi_id,
             r.recorder,
+            r.status,
             r.updated_at
         FROM recordings r
         LEFT JOIN bangumi_info_easy b
@@ -56,6 +58,7 @@ pub async fn list_recorder(
                     local_bangumi_id: r.local_bangumi_id,
                     bangumi_id: r.bangumi_id,
                     recorder: r.recorder,
+                    user_status: Some(r.status),
                     date: r.updated_at.date(),
                 });
             }

@@ -25,6 +25,7 @@ pub struct DetailListItem {
     pub episodes: Option<i32>,
     pub cover_url: Option<String>,
     pub recorder: Option<String>,
+    pub user_status: Option<i8>,
     pub updated_at: NaiveDate,
     pub created_at: NaiveDate
 }
@@ -47,6 +48,7 @@ pub async fn get_detail_list(
             d.episodes,
             b.cover_url,
             r.recorder,
+            r.status,
             r.updated_at,
             r.created_at
         FROM recordings r
@@ -73,6 +75,7 @@ pub async fn get_detail_list(
                     episodes: r.episodes,
                     cover_url: r.cover_url,
                     recorder: r.recorder,
+                    user_status: Some(r.status),
                     updated_at: r.updated_at.date(),
                     created_at: r.created_at.date(),
                 });
