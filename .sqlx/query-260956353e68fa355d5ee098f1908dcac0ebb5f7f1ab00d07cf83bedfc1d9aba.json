@@ -1,0 +1,64 @@
+{
+  "db_name": "MySQL",
+  "query": "\n        SELECT \n            r.id,\n            r.bangumi_id AS local_bangumi_id,\n            b.external_id AS bangumi_id,\n            r.recorder,\n            r.updated_at\n        FROM recordings r\n        LEFT JOIN bangumi_info_easy b\n            ON r.bangumi_id = b.id\n        WHERE r.user_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": {
+          "type": "Long",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | AUTO_INCREMENT",
+          "max_size": 10
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "local_bangumi_id",
+        "type_info": {
+          "type": "Long",
+          "flags": "NOT_NULL | MULTIPLE_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "max_size": 10
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "bangumi_id",
+        "type_info": {
+          "type": "VarString",
+          "flags": "UNIQUE_KEY | NO_DEFAULT_VALUE",
+          "max_size": 200
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "recorder",
+        "type_info": {
+          "type": "VarString",
+          "flags": "",
+          "max_size": 1020
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at",
+        "type_info": {
+          "type": "Datetime",
+          "flags": "NOT_NULL | BINARY | ON_UPDATE_NOW",
+          "max_size": 19
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "260956353e68fa355d5ee098f1908dcac0ebb5f7f1ab00d07cf83bedfc1d9aba"
+}

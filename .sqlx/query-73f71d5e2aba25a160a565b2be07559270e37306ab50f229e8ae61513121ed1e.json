@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "UPDATE recordings SET recorder = ? WHERE bangumi_id = ? AND user_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "73f71d5e2aba25a160a565b2be07559270e37306ab50f229e8ae61513121ed1e"
+}

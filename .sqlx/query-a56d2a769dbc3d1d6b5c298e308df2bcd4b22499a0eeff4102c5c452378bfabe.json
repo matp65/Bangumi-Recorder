@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "\n                INSERT INTO bangumi_info_easy\n                (external_id, title, type, info, cover_url)\n                VALUES (?, ?, ?, ?, ?)\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "a56d2a769dbc3d1d6b5c298e308df2bcd4b22499a0eeff4102c5c452378bfabe"
+}

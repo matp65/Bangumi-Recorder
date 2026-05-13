@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO bangumi_info_detailed (bangumi_id, type, author, release_date, episodes, description) VALUES (?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "54e008e296c46bacf39d5c406711e5da992e4d4205a4a6a27a8a8fbc9afbea26"
+}
