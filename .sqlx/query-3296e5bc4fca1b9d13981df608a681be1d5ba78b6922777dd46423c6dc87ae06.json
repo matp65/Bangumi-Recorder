@@ -1,0 +1,154 @@
+{
+  "db_name": "MySQL",
+  "query": "\n            SELECT \n                r.id,\n                r.bangumi_id AS local_bangumi_id,\n                b.external_id AS bangumi_id,\n                b.title,\n                b.type,\n                d.author,\n                d.release_date,\n                d.episodes,\n                d.description,\n                b.cover_url,\n                r.recorder,\n                r.status,\n                r.updated_at,\n                r.created_at\n            FROM recordings r\n            LEFT JOIN bangumi_info_easy b\n                ON r.bangumi_id = b.id\n            LEFT JOIN bangumi_info_detailed d\n                ON d.bangumi_id = b.id\n            WHERE b.id = ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": {
+          "type": "Long",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | AUTO_INCREMENT",
+          "max_size": 10
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "local_bangumi_id",
+        "type_info": {
+          "type": "Long",
+          "flags": "NOT_NULL | MULTIPLE_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "max_size": 10
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "bangumi_id",
+        "type_info": {
+          "type": "VarString",
+          "flags": "UNIQUE_KEY | NO_DEFAULT_VALUE",
+          "max_size": 200
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "title",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NO_DEFAULT_VALUE",
+          "max_size": 1020
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "type",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NO_DEFAULT_VALUE",
+          "max_size": 4
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "author",
+        "type_info": {
+          "type": "VarString",
+          "flags": "",
+          "max_size": 1020
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "release_date",
+        "type_info": {
+          "type": "Date",
+          "flags": "BINARY",
+          "max_size": 10
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "episodes",
+        "type_info": {
+          "type": "Long",
+          "flags": "",
+          "max_size": 11
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "description",
+        "type_info": {
+          "type": "Blob",
+          "flags": "BLOB",
+          "max_size": 262140
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "cover_url",
+        "type_info": {
+          "type": "VarString",
+          "flags": "",
+          "max_size": 1020
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "recorder",
+        "type_info": {
+          "type": "VarString",
+          "flags": "",
+          "max_size": 1020
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "status",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL",
+          "max_size": 4
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "updated_at",
+        "type_info": {
+          "type": "Datetime",
+          "flags": "NOT_NULL | BINARY | ON_UPDATE_NOW",
+          "max_size": 19
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "created_at",
+        "type_info": {
+          "type": "Datetime",
+          "flags": "NOT_NULL | BINARY",
+          "max_size": 19
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3296e5bc4fca1b9d13981df608a681be1d5ba78b6922777dd46423c6dc87ae06"
+}

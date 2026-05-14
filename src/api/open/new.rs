@@ -13,6 +13,7 @@ pub struct AddRecordResponse {
     pub status: i32,
     pub local_bangumi_id: Option<u32>,
     pub bangumi_id: Option<u32>,
+    pub recorder: Option<String>,
     pub date: Option<NaiveDate>,
 }
 
@@ -20,6 +21,7 @@ pub struct AddRecordResponse {
 pub struct AddRecordQuery {
     pub bangumi_id: Option<u32>,
     pub user_status: Option<i32>,
+    pub recorder: Option<String>,
     pub token: Option<String>,
 }
 
@@ -27,17 +29,19 @@ pub async fn add_record_open(
     State(pool): State<MySqlPool>,
     Query(params): Query<AddRecordQuery>,
 ) -> Json<AddRecordResponse> {
-    if params.bangumi_id.is_none() || params.user_status.is_none() || params.token.is_none() {
+    if params.bangumi_id.is_none() || (params.recorder.is_none() && params.user_status.is_none()) || params.token.is_none() {
         return Json(AddRecordResponse {
             status: -1,
             local_bangumi_id: None,
             bangumi_id: None,
+            recorder: None,
             date: None,
         });
     }
 
     let bangumi_tv_id = params.bangumi_id.unwrap();
     let user_status = params.user_status.clone().unwrap();
+    let recorder = params.recorder.clone().unwrap_or_default();
 
     let temp_local_bangumi_id = sqlx::query!(
         "SELECT id FROM bangumi_info_easy WHERE external_id = ?",
@@ -71,6 +75,7 @@ pub async fn add_record_open(
                         status: -2,
                         local_bangumi_id: Some(bangumi_tv_id),
                         bangumi_id: None,
+                        recorder: None,
                         date: None,
                     });
                 }
@@ -80,6 +85,7 @@ pub async fn add_record_open(
                         status: -1,
                         local_bangumi_id: None,
                         bangumi_id: None,
+                        recorder: None,
                         date: None,
                     });
                 }
@@ -99,6 +105,7 @@ pub async fn add_record_open(
                 status: -1,
                 local_bangumi_id: None,
                 bangumi_id: None,
+                recorder: None,
                 date: None,
             });
         }
@@ -113,24 +120,26 @@ pub async fn add_record_open(
                 status: -2, // Invalid token
                 local_bangumi_id: None,
                 bangumi_id: None,
+                recorder: None,
                 date: None,
             });
         }
     };
 
     match sqlx::query!(
-        "SELECT id FROM recordings WHERE user_id = ? AND bangumi_id = ? LIMIT 1",
+        "SELECT id, recorder FROM recordings WHERE user_id = ? AND bangumi_id = ? LIMIT 1",
         user_id,
         bangumi_id
     )
     .fetch_optional(&pool)
     .await
     {
-        Ok(Some(_)) => {
+        Ok(Some(k)) => {
             return Json(AddRecordResponse {
                 status: -3,
                 local_bangumi_id: Some(bangumi_id),
                 bangumi_id: Some(bangumi_tv_id),
+                recorder: Some(k.recorder.unwrap_or_default()),
                 date: None,
             });
         }
@@ -140,6 +149,7 @@ pub async fn add_record_open(
                 status: -1,
                 local_bangumi_id: None,
                 bangumi_id: None,
+                recorder: None,
                 date: None,
             });
         }
@@ -147,10 +157,11 @@ pub async fn add_record_open(
     }
 
     match sqlx::query!(
-        "INSERT INTO recordings (user_id, bangumi_id, status) VALUES (?, ?, ?)",
+        "INSERT INTO recordings (user_id, bangumi_id, status, recorder) VALUES (?, ?, ?, ?)",
         user_id,
         bangumi_id,
-        user_status
+        user_status,
+        recorder
     )
     .execute(&pool)
     .await
@@ -159,6 +170,7 @@ pub async fn add_record_open(
             status: 0,
             local_bangumi_id: Some(bangumi_id),
             bangumi_id: Some(bangumi_tv_id),
+            recorder: Some(recorder),
             date: Some(chrono::Utc::now().naive_utc().date()),
         }),
         Err(e) => {
@@ -168,6 +180,7 @@ pub async fn add_record_open(
                         status: -3,
                         local_bangumi_id: Some(bangumi_id),
                         bangumi_id: Some(bangumi_tv_id),
+                        recorder: Some(recorder),
                         date: None,
                     });
                 }
@@ -177,6 +190,7 @@ pub async fn add_record_open(
                 status: -1,
                 local_bangumi_id: None,
                 bangumi_id: None,
+                recorder: None,
                 date: None,
             })
         }

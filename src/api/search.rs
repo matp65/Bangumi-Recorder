@@ -11,7 +11,7 @@ use urlencoding::encode;
 use scraper::{Html, Selector, ElementRef};
 use sqlx::mysql::MySqlPool;
 
-use chrono::NaiveDate;
+use chrono::{Duration, Utc, NaiveDate};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TitleSearchQuery {
@@ -35,7 +35,7 @@ pub struct BangumiItem {
     pub bangumi_id: String,
     pub title: String,
     pub cover_url: String,
-    pub r#type: i32,
+    pub r#type: i8,
     pub author: String,
     pub release_date: Option<NaiveDate>,
     pub episodes: i32,
@@ -264,6 +264,73 @@ pub async fn search_bangumi_by_id(
     }
 
     let id = params.id.unwrap();
+
+    let _local_bangumi_id: Option<u32> = match sqlx::query_scalar!(
+        "SELECT id FROM bangumi_info_easy WHERE external_id = ?",
+        id
+    )
+    .fetch_optional(&pool)
+    .await    
+    {
+        Ok(Some(id)) => Some(id),
+        Ok(None) => None,
+        Err(_) => return Json(IDSearchResponse { 
+            status: -2,
+            data: None }),
+    };
+
+    if _local_bangumi_id.is_some() {
+        match sqlx::query!(
+            r#"
+            SELECT 
+                r.id,
+                r.bangumi_id AS local_bangumi_id,
+                b.external_id AS bangumi_id,
+                b.title,
+                b.type,
+                d.author,
+                d.release_date,
+                d.episodes,
+                d.description,
+                b.cover_url,
+                r.recorder,
+                r.status,
+                r.updated_at,
+                r.created_at
+            FROM recordings r
+            LEFT JOIN bangumi_info_easy b
+                ON r.bangumi_id = b.id
+            LEFT JOIN bangumi_info_detailed d
+                ON d.bangumi_id = b.id
+            WHERE b.id = ?
+            "#,
+            _local_bangumi_id.unwrap()
+        )
+        .fetch_all(&pool)
+        .await
+            {
+                Ok(rows) => {
+                    if let Some(r) = rows.into_iter().next() {
+                        if Utc::now().naive_utc() <= r.updated_at + Duration::hours(24) {
+                            return Json(IDSearchResponse {
+                                status: 0,
+                                data: Some(BangumiItem {
+                                    bangumi_id: r.bangumi_id.unwrap_or_default(),
+                                    title: r.title.unwrap_or_default(),
+                                    cover_url: r.cover_url.unwrap_or_default(),
+                                    r#type: r.r#type.unwrap_or(8),
+                                    author: r.author.unwrap_or_default(),
+                                    release_date: Some(r.release_date.unwrap_or_default()),
+                                    episodes: r.episodes.unwrap_or(0),
+                                    description: r.description.unwrap_or_default(),
+                                }),
+                            });
+                        }
+                    }
+                }
+                Err(_) => {}
+            }
+    }
 
     let client = Client::new();
     let url = format!("https://bgm.tv/subject/{}", id);
