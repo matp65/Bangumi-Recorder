@@ -1,7 +1,8 @@
 use axum::{
-    Router, middleware, routing::{get, post}, response::Html
+    Router, middleware, routing::{get, post}, response::Html,
+    http::header, response::IntoResponse,
 };
-use tower_http::services::ServeDir;
+use rust_embed::RustEmbed;
 use dotenvy::dotenv;
 use sqlx::MySqlPool;
 use tower_http::cors::CorsLayer;
@@ -9,6 +10,28 @@ use http::Method;
 
 mod api;
 mod auth_bearer;
+
+#[derive(RustEmbed)]
+#[folder = "frontend/dist"]
+struct Assets;
+
+fn guess_mime(path: &str) -> &'static str {
+    match path.rsplit('.').next() {
+        Some("html") => "text/html; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("js" | "mjs") => "application/javascript; charset=utf-8",
+        Some("json") => "application/json",
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("svg") => "image/svg+xml",
+        Some("ico") => "image/x-icon",
+        Some("wasm") => "application/wasm",
+        Some("woff") => "font/woff",
+        Some("woff2") => "font/woff2",
+        Some("ttf") => "font/ttf",
+        _ => "application/octet-stream",
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -29,13 +52,24 @@ async fn main() {
     let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
 
     async fn index() -> Html<String> {
-        let html = std::fs::read_to_string("frontend/dist/index.html")
-            .unwrap_or_else(|_| {
-                std::fs::read_to_string("frontend/index.html")
-                    .expect("failed to read index.html")
-            });
+        let html = Assets::get("index.html")
+            .expect("index.html not found in embedded assets")
+            .data;
+        Html(String::from_utf8_lossy(&html).into_owned())
+    }
 
-        Html(html)
+    async fn serve_fallback(uri: axum::http::Uri) -> impl IntoResponse {
+        let path = uri.path().trim_start_matches('/');
+        if !path.is_empty() {
+            if let Some(content) = Assets::get(path) {
+                let mime = guess_mime(path);
+                return ([(header::CONTENT_TYPE, mime)], content.data.into_owned()).into_response();
+            }
+        }
+        let html = Assets::get("index.html")
+            .expect("index.html not found in embedded assets")
+            .data;
+        Html(String::from_utf8_lossy(&html).into_owned()).into_response()
     }
 
     let api_router = Router::new()
@@ -70,8 +104,7 @@ async fn main() {
         .route("/auth/config", get(auth_bearer::get_config))
         .nest("/api/v1", api_router)
         .nest("/api/v1/open", open_router)
-        .nest_service("/assets", ServeDir::new("frontend/dist/assets"))
-        .fallback(get(index))
+        .fallback(get(serve_fallback))
         .with_state(pool)
         .layer(
             CorsLayer::permissive()
