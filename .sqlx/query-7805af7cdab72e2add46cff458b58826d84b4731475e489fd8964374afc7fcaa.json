@@ -1,0 +1,54 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT recorder, status, is_delete, updated_at FROM recordings WHERE user_id = ? AND bangumi_id = ? AND is_delete = 0",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "recorder",
+        "type_info": {
+          "type": "VarString",
+          "flags": "",
+          "max_size": 1020
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "status",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL",
+          "max_size": 4
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "is_delete",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL",
+          "max_size": 4
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "updated_at",
+        "type_info": {
+          "type": "Datetime",
+          "flags": "NOT_NULL | BINARY | ON_UPDATE_NOW",
+          "max_size": 19
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7805af7cdab72e2add46cff458b58826d84b4731475e489fd8964374afc7fcaa"
+}

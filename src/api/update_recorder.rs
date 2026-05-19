@@ -62,7 +62,7 @@ pub async fn update_user_recorder (
     };
 
     let recording = match sqlx::query!(
-        "SELECT id FROM recordings WHERE user_id = ? AND bangumi_id = ?",
+        "SELECT id FROM recordings WHERE user_id = ? AND bangumi_id = ? AND is_delete = 0",
         auth_user.user_id,
         local_bangumi_id
     )

@@ -76,7 +76,7 @@ pub async fn delete_recorder(
     };
 
     match sqlx::query!(
-        "DELETE FROM recordings WHERE user_id = ? AND bangumi_id = ?",
+        "UPDATE recordings SET is_delete = 1 WHERE user_id = ? AND bangumi_id = ? AND is_delete = 0",
         user_id,
         local_bangumi_id
     )

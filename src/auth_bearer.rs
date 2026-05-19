@@ -67,7 +67,7 @@ fn build_claims(user_id: i64, username: String, secret: &str) -> Result<String, 
         user_id,
         sub: username,
         iat: now.timestamp() as usize,
-        exp: (now + Duration::hours(24)).timestamp() as usize,
+        exp: (now + Duration::days(7)).timestamp() as usize,
     };
 
     encode(

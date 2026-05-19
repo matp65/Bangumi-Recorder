@@ -53,6 +53,11 @@ async function fetchData() {
     }
     if (recordRes.status === 0) {
       recorder.value = recordRes
+      if (recordRes.is_delete) {
+        Message.warning('该追番记录已被删除')
+        router.push('/')
+        return
+      }
       if (recordRes.recorder) {
         const parts = recordRes.recorder.split('|')
         epInput.value = parseInt(parts[0]) || undefined

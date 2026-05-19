@@ -22,6 +22,13 @@ async function request<T = any>(url: string, options: RequestOptions = {}): Prom
     body: body ? JSON.stringify(body) : undefined,
   })
 
+  if (res.status === 401) {
+    localStorage.removeItem('token')
+    localStorage.removeItem('username')
+    window.location.href = '/login'
+    return { status: -5 } as T
+  }
+
   const data = await res.json()
   return data as T
 }
@@ -84,6 +91,7 @@ export interface DetailListItem {
   cover_url: string | null
   recorder: string | null
   user_status?: number
+  is_delete: boolean
   updated_at: string
   created_at: string
 }
@@ -106,6 +114,7 @@ export interface GetRecorderResponse {
   bangumi_id?: number
   recorder?: string
   user_status?: number
+  is_delete?: boolean
   date?: string
 }
 

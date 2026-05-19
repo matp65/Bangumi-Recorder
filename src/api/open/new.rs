@@ -40,7 +40,7 @@ pub async fn add_record_open(
     }
 
     let bangumi_tv_id = params.bangumi_id.unwrap();
-    let user_status = params.user_status.clone().unwrap();
+    let user_status = params.user_status.clone().unwrap_or(0);
     let recorder = params.recorder.clone().unwrap_or_default();
 
     let temp_local_bangumi_id = sqlx::query!(
@@ -127,7 +127,7 @@ pub async fn add_record_open(
     };
 
     match sqlx::query!(
-        "SELECT id, recorder FROM recordings WHERE user_id = ? AND bangumi_id = ? LIMIT 1",
+        "SELECT id, recorder, is_delete FROM recordings WHERE user_id = ? AND bangumi_id = ? LIMIT 1",
         user_id,
         bangumi_id
     )
@@ -135,12 +135,29 @@ pub async fn add_record_open(
     .await
     {
         Ok(Some(k)) => {
+            if k.is_delete == 0 {
+                return Json(AddRecordResponse {
+                    status: -3,
+                    local_bangumi_id: Some(bangumi_id),
+                    bangumi_id: Some(bangumi_tv_id),
+                    recorder: Some(k.recorder.unwrap_or_default()),
+                    date: None,
+                });
+            }
+            let _ = sqlx::query!(
+                "UPDATE recordings SET is_delete = 0, status = ?, recorder = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                user_status,
+                recorder,
+                k.id
+            )
+            .execute(&pool)
+            .await;
             return Json(AddRecordResponse {
-                status: -3,
+                status: 0,
                 local_bangumi_id: Some(bangumi_id),
                 bangumi_id: Some(bangumi_tv_id),
-                recorder: Some(k.recorder.unwrap_or_default()),
-                date: None,
+                recorder: Some(recorder),
+                date: Some(chrono::Utc::now().naive_utc().date()),
             });
         }
         Err(e) => {

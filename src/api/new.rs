@@ -105,19 +105,34 @@ pub async fn add_record(
     };
 
     match sqlx::query!(
-        "SELECT id FROM recordings WHERE user_id = ? AND bangumi_id = ? LIMIT 1",
+        "SELECT id, is_delete FROM recordings WHERE user_id = ? AND bangumi_id = ? LIMIT 1",
         auth_user.user_id,
         bangumi_id
     )
     .fetch_optional(&pool)
     .await
     {
-        Ok(Some(_)) => {
+        Ok(Some(rec)) => {
+            if rec.is_delete == 0 {
+                return Json(AddRecordResponse {
+                    status: -3,
+                    local_bangumi_id: Some(bangumi_id),
+                    bangumi_id: Some(bangumi_tv_id),
+                    date: None,
+                });
+            }
+            let _ = sqlx::query!(
+                "UPDATE recordings SET is_delete = 0, status = ?, recorder = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                user_status,
+                rec.id
+            )
+            .execute(&pool)
+            .await;
             return Json(AddRecordResponse {
-                status: -3,
+                status: 0,
                 local_bangumi_id: Some(bangumi_id),
                 bangumi_id: Some(bangumi_tv_id),
-                date: None,
+                date: Some(chrono::Utc::now().naive_utc().date()),
             });
         }
         Err(e) => {

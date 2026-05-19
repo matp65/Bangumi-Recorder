@@ -31,6 +31,7 @@ pub struct DetailListItem {
     pub cover_url: Option<String>,
     pub recorder: Option<String>,
     pub user_status: Option<i8>,
+    pub is_delete: bool,
     pub updated_at: NaiveDate,
     pub created_at: NaiveDate
 }
@@ -74,6 +75,7 @@ pub async fn get_detail_list(
             b.cover_url,
             r.recorder,
             r.status,
+            r.is_delete,
             r.updated_at,
             r.created_at
         FROM recordings r
@@ -101,6 +103,7 @@ pub async fn get_detail_list(
                     cover_url: r.cover_url,
                     recorder: r.recorder,
                     user_status: Some(r.status),
+                    is_delete: r.is_delete != 0,
                     updated_at: r.updated_at.date(),
                     created_at: r.created_at.date(),
                 });

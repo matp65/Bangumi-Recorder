@@ -20,6 +20,7 @@ pub struct GetRecorderResponse {
     pub bangumi_id: Option<u32>,
     pub recorder: Option<String>,
     pub user_status: Option<i8>,
+    pub is_delete: Option<bool>,
     pub date: Option<NaiveDate>
 }
 
@@ -38,6 +39,7 @@ pub async fn get_recorder(
                 bangumi_id: None,
                 recorder: None,
                 user_status: None,
+                is_delete: None,
                 date: None,
             });
         }
@@ -60,6 +62,7 @@ pub async fn get_recorder(
                 bangumi_id: Some(bangumi_external_id),
                 recorder: None,
                 user_status: None,
+                is_delete: None,
                 date: None
             });
         }
@@ -71,13 +74,14 @@ pub async fn get_recorder(
                 bangumi_id: Some(bangumi_external_id),
                 recorder: None,
                 user_status: None,
+                is_delete: None,
                 date: None
             });
         }
     };
 
     match sqlx::query!(
-        "SELECT recorder, status, updated_at FROM recordings WHERE user_id = ? AND bangumi_id = ?",
+        "SELECT recorder, status, is_delete, updated_at FROM recordings WHERE user_id = ? AND bangumi_id = ? AND is_delete = 0",
         auth_user.user_id,
         local_bangumi_id
     )
@@ -91,6 +95,7 @@ pub async fn get_recorder(
                 bangumi_id: Some(bangumi_external_id),
                 recorder: r.recorder,
                 user_status: Some(r.status),
+                is_delete: Some(r.is_delete != 0),
                 date: Some(r.updated_at.date()),
             })
         }
@@ -101,6 +106,7 @@ pub async fn get_recorder(
                 bangumi_id: Some(bangumi_external_id),
                 recorder: None,
                 user_status: None,
+                is_delete: None,
                 date: None,
             })
         }
@@ -111,6 +117,7 @@ pub async fn get_recorder(
                 bangumi_id: Some(bangumi_external_id),
                 recorder: None,
                 user_status: None,
+                is_delete: None,
                 date: None,
             })
         }

@@ -56,7 +56,7 @@ async function fetchRecords() {
   try {
     const res = await api.getDetailList()
     if (res.status === 0 && res.data) {
-      records.value = res.data
+      records.value = res.data.filter(r => !r.is_delete)
     } else {
       Message.error('获取追番列表失败')
     }

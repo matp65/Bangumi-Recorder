@@ -10,6 +10,7 @@ const auth = useAuthStore()
 
 const isLogin = ref(true)
 const allowRegister = ref(true)
+const rememberAccount = ref(auth.rememberAccount)
 
 const form = reactive({
   username: '',
@@ -24,7 +25,11 @@ onMounted(async () => {
     allowRegister.value = config.allow_register
   } catch (error) {
     console.error('Failed to fetch config:', error)
-    allowRegister.value = true // Default to true if request fails
+    allowRegister.value = true
+  }
+  const remembered = auth.getRememberedUsername()
+  if (remembered) {
+    form.username = remembered
   }
 })
 
@@ -42,6 +47,7 @@ async function handleSubmit() {
       success = await auth.register(form.username, form.password)
     }
     if (success) {
+      auth.saveRememberedUsername(form.username)
       Message.success(isLogin.value ? '登录成功' : '注册成功')
       router.push('/')
     } else {
@@ -91,6 +97,14 @@ async function handleSubmit() {
           >
             {{ isLogin ? '登录' : '注册' }}
           </a-button>
+        </a-form-item>
+        <a-form-item v-if="isLogin">
+          <a-checkbox
+            :model-value="rememberAccount"
+            @change="(v: any) => { rememberAccount = v; auth.setRememberAccount(v) }"
+          >
+            记住账号
+          </a-checkbox>
         </a-form-item>
       </a-form>
 
