@@ -103,14 +103,9 @@ onMounted(fetchRecords)
 
 <template>
   <div>
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px">
-      <div>
-        <h2 style="font-size: 20px; color: #1d2129">我的追番</h2>
-        <p style="color: #86909c; font-size: 14px; margin-top: 4px">共 {{ records.length }} 部</p>
-      </div>
-      <a-button type="primary" @click="router.push({ name: 'Search' })">
-        搜索并添加番剧
-      </a-button>
+    <div style="margin-bottom: 24px">
+      <h2 style="font-size: 20px; color: #1d2129; margin: 0">我的追番</h2>
+      <p style="color: #86909c; font-size: 14px; margin-top: 4px">共 {{ records.length }} 部</p>
     </div>
 
     <a-spin :loading="loading" style="min-height: 200px">
@@ -124,7 +119,7 @@ onMounted(fetchRecords)
           hoverable
           class="bangumi-card"
           @click="item.bangumi_id && goDetail(item.bangumi_id)"
-          :body-style="{ padding: '12px' }"
+          :body-style="{ padding: '16px' }"
         >
           <div style="display: flex; gap: 12px">
             <div style="flex-shrink: 0; width: 100px">

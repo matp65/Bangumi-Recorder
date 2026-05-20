@@ -1,5 +1,6 @@
 use axum::{
-    Json, extract::{Query, State}
+    Json, extract::{Query, State},
+    http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
@@ -27,10 +28,13 @@ pub struct GetRecorderResponse {
 pub async fn get_recorder(
     State(pool): State<MySqlPool>,
     Query(params): Query<GetRecorderQuery>
-) -> Json<GetRecorderResponse> {
+) -> Result<Json<GetRecorderResponse>, StatusCode> {
 
-    if params.bangumi_id.is_none() || params.token.is_none() {
-        return Json(GetRecorderResponse { 
+    if params.token.is_none() {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if params.bangumi_id.is_none() {
+        return Ok(Json(GetRecorderResponse { 
             status: -2,
             local_bangumi_id: None,
             bangumi_id: None,
@@ -38,7 +42,7 @@ pub async fn get_recorder(
             user_status: None,
             is_delete: None,
             date: None 
-        })
+        }));
     }
 
     let temp_local_bangumi_id = sqlx::query!(
@@ -52,7 +56,7 @@ pub async fn get_recorder(
         Ok(Some(record)) => record.id,
         Ok(None) => {
             log::error!("Bangumi with external_id {} not found", params.bangumi_id.unwrap());
-            return Json(GetRecorderResponse { 
+            return Ok(Json(GetRecorderResponse { 
                 status: -2,
                 local_bangumi_id: None,
                 bangumi_id: Some(params.bangumi_id.unwrap()),
@@ -60,11 +64,11 @@ pub async fn get_recorder(
                 user_status: None,
                 is_delete: None,
                 date: None
-            });
+            }));
         }
         Err(e) => {
             log::error!("Failed to query bangumi_info_easy: {}", e);
-            return Json(GetRecorderResponse { 
+            return Ok(Json(GetRecorderResponse { 
                 status: -2,
                 local_bangumi_id: None,
                 bangumi_id: Some(params.bangumi_id.unwrap()),
@@ -72,7 +76,7 @@ pub async fn get_recorder(
                 user_status: None,
                 is_delete: None,
                 date: None
-            });
+            }));
         }
     };
 
@@ -81,15 +85,7 @@ pub async fn get_recorder(
     let user_id = match check_api_token(&pool, token).await {
         Some(id) => id,
         None => {
-            return Json(GetRecorderResponse {
-                status: -2,
-                local_bangumi_id: None,
-                bangumi_id: None,
-                recorder: None,
-                user_status: None,
-                is_delete: None,
-                date: None
-            });
+            return Err(StatusCode::UNAUTHORIZED);
         }
     };
 
@@ -102,7 +98,7 @@ pub async fn get_recorder(
     .await
     {
         Ok(Some(r)) => {
-            Json(GetRecorderResponse { 
+            Ok(Json(GetRecorderResponse { 
                 status: 0, 
                 local_bangumi_id: Some(local_bangumi_id),
                 bangumi_id: Some(params.bangumi_id.unwrap()),
@@ -110,10 +106,10 @@ pub async fn get_recorder(
                 user_status: Some(r.status),
                 is_delete: Some(r.is_delete != 0),
                 date: Some(r.updated_at.date()),
-            })
+            }))
         }
         Ok(None) => {
-            Json(GetRecorderResponse { 
+            Ok(Json(GetRecorderResponse { 
                 status: 0,
                 local_bangumi_id: Some(local_bangumi_id),
                 bangumi_id: Some(params.bangumi_id.unwrap()),
@@ -121,10 +117,10 @@ pub async fn get_recorder(
                 user_status: None,
                 is_delete: None,
                 date: None,
-            })
+            }))
         }
         Err(_) => {
-            Json(GetRecorderResponse {
+            Ok(Json(GetRecorderResponse {
                 status: -2,
                 local_bangumi_id: Some(local_bangumi_id),
                 bangumi_id: Some(params.bangumi_id.unwrap()),
@@ -132,7 +128,7 @@ pub async fn get_recorder(
                 user_status: None,
                 is_delete: None,
                 date: None,
-            })
+            }))
         }
     }
 }

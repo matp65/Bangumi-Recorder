@@ -1,5 +1,6 @@
 use axum::{
     extract::{Query, State},
+    http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -39,25 +40,17 @@ pub struct DetailListItem {
 pub async fn get_detail_list(
     State(pool): State<MySqlPool>,
     Query(params): Query<DetailListQuery>,
-) -> Json<DetailListResponse> {
+) -> Result<Json<DetailListResponse>, StatusCode> {
 
     if params.token.is_none() {
-        return Json(DetailListResponse { 
-            status: -1, 
-            data: None 
-        })
+        return Err(StatusCode::UNAUTHORIZED);
     }
 
     let token = params.token.as_ref().unwrap();
     
     let user_id = match check_api_token(&pool, token).await {
         Some(id) => id,
-        None => {
-            return Json(DetailListResponse {
-                status: -2,
-                data: None,
-            });
-        }
+        None => return Err(StatusCode::UNAUTHORIZED),
     };
 
     let mut results: Vec<DetailListItem> = Vec::new();
@@ -111,15 +104,15 @@ pub async fn get_detail_list(
         }
         Err(e) => {
             log::error!("DB error: {:?}", e);
-            return Json(DetailListResponse {
+            return Ok(Json(DetailListResponse {
                 status: -1,
                 data: None
-            })
+            }))
         }
     }
 
-    Json(DetailListResponse {
+    Ok(Json(DetailListResponse {
         status: 0,
         data: Some(results),
-    })
+    }))
 }

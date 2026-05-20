@@ -1,5 +1,6 @@
 use axum::{
-    extract::State, response::Json, extract::Query
+    extract::State, response::Json, extract::Query,
+    http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
 
@@ -23,16 +24,16 @@ pub struct UpdateRecorderResponse {
 pub async fn update_user_recorder (
     State(pool): State<MySqlPool>,
     Query(params): Query<UpdateRecorderQuery>
-) -> Json<UpdateRecorderResponse> {
+) -> Result<Json<UpdateRecorderResponse>, StatusCode> {
 
-    if params.bangumi_id.is_none()
-        || params.token.is_none()
-        || (params.recorder.is_none() && params.user_status.is_none())
-    {
-        return Json(UpdateRecorderResponse {
+    if params.token.is_none() {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if params.bangumi_id.is_none() || (params.recorder.is_none() && params.user_status.is_none()) {
+        return Ok(Json(UpdateRecorderResponse {
             status: -1,
             message: Some("Missing required parameters".to_string())
-        });
+        }));
     }
 
     let bangumi_id = params.bangumi_id.unwrap();
@@ -40,12 +41,7 @@ pub async fn update_user_recorder (
 
     let user_id = match check_api_token(&pool, token).await {
         Some(id) => id,
-        None => {
-            return Json(UpdateRecorderResponse {
-                status: -2,
-                message: Some("Invalid token".to_string())
-            });
-        }
+        None => return Err(StatusCode::UNAUTHORIZED),
     };
 
     let temp_local_bangumi_id = sqlx::query!(
@@ -59,17 +55,17 @@ pub async fn update_user_recorder (
         Ok(Some(record)) => record.id,
         Ok(None) => {
             log::error!("Bangumi with external_id {} not found", bangumi_id);
-            return Json(UpdateRecorderResponse {
+            return Ok(Json(UpdateRecorderResponse {
                 status: -2,
                 message: Some("Bangumi not found".to_string())
-            });
+            }));
         }
         Err(e) => {
             log::error!("Failed to query bangumi_info_easy: {}", e);
-            return Json(UpdateRecorderResponse {
+            return Ok(Json(UpdateRecorderResponse {
                 status: -2,
                 message: Some("Database error".to_string())
-            });
+            }));
         }
     };
 
@@ -83,17 +79,17 @@ pub async fn update_user_recorder (
     {
         Ok(Some(r)) => r,
         Ok(None) => {
-            return Json(UpdateRecorderResponse {
+            return Ok(Json(UpdateRecorderResponse {
                 status: -3,
                 message: Some("Recording not found".to_string())
-            });
+            }));
         }
         Err(e) => {
             log::error!("Failed to query recording: {}", e);
-            return Json(UpdateRecorderResponse {
+            return Ok(Json(UpdateRecorderResponse {
                 status: -2,
                 message: Some("Database error".to_string())
-            });
+            }));
         }
     };
 
@@ -119,10 +115,10 @@ pub async fn update_user_recorder (
             }
             Err(e) => {
                 log::warn!("Failed to update recorder for bangumi_id {}: {:?}", bangumi_id, e);
-                return Json(UpdateRecorderResponse {
+                return Ok(Json(UpdateRecorderResponse {
                     status: -2,
                     message: Some("Database error".to_string())
-                });
+                }));
             }
         }
     }
@@ -139,16 +135,16 @@ pub async fn update_user_recorder (
             Ok(_) => {}
             Err(e) => {
                 log::warn!("Failed to update status for bangumi_id {}: {:?}", bangumi_id, e);
-                return Json(UpdateRecorderResponse {
+                return Ok(Json(UpdateRecorderResponse {
                     status: -2,
                     message: Some("Database error".to_string())
-                });
+                }));
             }
         }
     }
 
-    Json(UpdateRecorderResponse {
+    Ok(Json(UpdateRecorderResponse {
         status: 0,
         message: Some("Updated successfully".to_string())
-    })
+    }))
 }

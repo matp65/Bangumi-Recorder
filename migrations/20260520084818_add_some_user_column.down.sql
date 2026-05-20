@@ -1,0 +1,3 @@
+ALTER TABLE users DROP COLUMN nickname;
+ALTER TABLE users DROP COLUMN email;
+ALTER TABLE users DROP COLUMN avatar;

@@ -22,6 +22,8 @@ export function isTokenExpired(token: string): boolean {
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('token'))
   const username = ref<string | null>(localStorage.getItem('username'))
+  const nickname = ref<string | null>(null)
+  const avatar = ref<string | null>(null)
   const rememberAccount = ref<boolean>(localStorage.getItem('remember_account') === 'true')
 
   function isLoggedIn() {
@@ -40,6 +42,7 @@ export const useAuthStore = defineStore('auth', () => {
       username.value = uname
       localStorage.setItem('token', res.token)
       localStorage.setItem('username', uname)
+      await fetchUserInfo()
       return true
     }
     return false
@@ -52,9 +55,22 @@ export const useAuthStore = defineStore('auth', () => {
       username.value = uname
       localStorage.setItem('token', res.token)
       localStorage.setItem('username', uname)
+      await fetchUserInfo()
       return true
     }
     return false
+  }
+
+  async function fetchUserInfo() {
+    if (!token.value) return
+    try {
+      const info = await api.getUserInfo()
+      if (info.id) {
+        nickname.value = info.nickname || null
+        avatar.value = info.avatar || null
+      }
+    } catch {
+    }
   }
 
   async function getConfig() {
@@ -83,6 +99,8 @@ export const useAuthStore = defineStore('auth', () => {
     const savedUsername = rememberAccount.value ? username.value : null
     token.value = null
     username.value = null
+    nickname.value = null
+    avatar.value = null
     localStorage.removeItem('token')
     localStorage.removeItem('username')
     if (rememberAccount.value && savedUsername) {
@@ -90,5 +108,5 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  return { token, username, rememberAccount, isLoggedIn, login, register, getConfig, logout, setRememberAccount, saveRememberedUsername, getRememberedUsername }
+  return { token, username, nickname, avatar, rememberAccount, isLoggedIn, login, register, getConfig, fetchUserInfo, logout, setRememberAccount, saveRememberedUsername, getRememberedUsername }
 })

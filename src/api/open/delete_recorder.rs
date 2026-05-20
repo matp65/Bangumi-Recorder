@@ -1,5 +1,6 @@
 use axum::{
     extract::{Query, State},
+    http::StatusCode,
     response::Json,
 };
 use serde::{Deserialize, Serialize};
@@ -22,32 +23,26 @@ pub struct DeleteRecorderResponse {
 pub async fn delete_recorder(
     State(pool): State<MySqlPool>,
     Query(params): Query<DeleteRecorderQuery>,
-) -> Json<DeleteRecorderResponse> {
+) -> Result<Json<DeleteRecorderResponse>, StatusCode> {
     let bangumi_external_id = match params.bangumi_id {
         Some(id) => id,
         None => {
-            return Json(DeleteRecorderResponse {
+            return Ok(Json(DeleteRecorderResponse {
                 status: -1,
                 message: Some("Missing bangumi_id".to_string()),
-            });
+            }));
         }
     };
 
     if params.token.is_none() {
-        return Json(DeleteRecorderResponse {
-            status: -1,
-            message: Some("Missing token".to_string()),
-        });
+        return Err(StatusCode::UNAUTHORIZED);
     }
 
     let token = params.token.as_ref().unwrap();
     let user_id = match check_api_token(&pool, token).await {
         Some(id) => id,
         None => {
-            return Json(DeleteRecorderResponse {
-                status: -2,
-                message: Some("Invalid token".to_string()),
-            });
+            return Err(StatusCode::UNAUTHORIZED);
         }
     };
 
@@ -61,17 +56,17 @@ pub async fn delete_recorder(
     let local_bangumi_id = match temp_local_bangumi_id {
         Ok(Some(record)) => record.id,
         Ok(None) => {
-            return Json(DeleteRecorderResponse {
+            return Ok(Json(DeleteRecorderResponse {
                 status: -2,
                 message: Some("Bangumi not found".to_string()),
-            });
+            }));
         }
         Err(e) => {
             log::error!("Failed to query bangumi_info_easy: {}", e);
-            return Json(DeleteRecorderResponse {
+            return Ok(Json(DeleteRecorderResponse {
                 status: -2,
                 message: Some("Database error".to_string()),
-            });
+            }));
         }
     };
 
@@ -85,23 +80,23 @@ pub async fn delete_recorder(
     {
         Ok(result) => {
             if result.rows_affected() == 0 {
-                Json(DeleteRecorderResponse {
+                Ok(Json(DeleteRecorderResponse {
                     status: -3,
                     message: Some("Recording not found".to_string()),
-                })
+                }))
             } else {
-                Json(DeleteRecorderResponse {
+                Ok(Json(DeleteRecorderResponse {
                     status: 0,
                     message: Some("Deleted successfully".to_string()),
-                })
+                }))
             }
         }
         Err(e) => {
             log::error!("Failed to delete recording: {}", e);
-            Json(DeleteRecorderResponse {
+            Ok(Json(DeleteRecorderResponse {
                 status: -2,
                 message: Some("Failed to delete recording".to_string()),
-            })
+            }))
         }
     }
 }

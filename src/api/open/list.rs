@@ -1,5 +1,6 @@
 use axum::{
-    Json, extract::{Query, State}
+    Json, extract::{Query, State},
+    http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
 
@@ -33,13 +34,10 @@ pub struct RecorderItem {
 pub async fn list_recorder(
     State(pool): State<MySqlPool>,
     Query(params): Query<ListRecorderQuery>
-) -> Json<ListRecorderResponse> {
+) -> Result<Json<ListRecorderResponse>, StatusCode> {
 
     if params.token.is_none() {
-        return Json(ListRecorderResponse { 
-            status: -1, 
-            data: None 
-        })
+        return Err(StatusCode::UNAUTHORIZED);
     }
     let mut results: Vec<RecorderItem> = Vec::new();
 
@@ -47,10 +45,7 @@ pub async fn list_recorder(
     let user_id = match check_api_token(&pool, token).await {
         Some(id) => id,
         None => {
-            return Json(ListRecorderResponse {
-                status: -2,
-                data: None,
-            });
+            return Err(StatusCode::UNAUTHORIZED);
         }
     };
 
@@ -87,17 +82,17 @@ pub async fn list_recorder(
                 });
             }
 
-            Json(ListRecorderResponse {
+            Ok(Json(ListRecorderResponse {
                 status: 0,
                 data: Some(results),
-            })
+            }))
         }
 
         Err(_) => {
-            Json(ListRecorderResponse {
+            Ok(Json(ListRecorderResponse {
                 status: -1,
                 data: None,
-            })
+            }))
         }
     }
 }

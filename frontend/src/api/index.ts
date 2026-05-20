@@ -105,6 +105,7 @@ export interface AddRecordResponse {
   status: number
   local_bangumi_id?: number
   bangumi_id?: number
+  recorder?: string
   date?: string
 }
 
@@ -131,6 +132,31 @@ export interface DeleteRecorderResponse {
 export interface TokenRegenerateResponse {
   status: number
   api_token?: string
+  message?: string
+}
+
+export interface UserInfo {
+  id: number
+  username: string
+  nickname: string
+  email: string
+  avatar: string
+  status: number
+  reg_time: string
+}
+
+export interface UpdateUserInfo {
+  nickname?: string
+  avatar?: string
+}
+
+export interface UpdatePasswordRequest {
+  old_password?: string
+  new_password?: string
+}
+
+export interface UserResponse {
+  status: number
   message?: string
 }
 
@@ -171,10 +197,10 @@ export const api = {
     return request<DetailListResponse>('/api/v1/record/detail_list')
   },
 
-  addRecord(bangumi_id: number, user_status: number) {
+  addRecord(bangumi_id: number, user_status: number, recorder?: string) {
     return request<AddRecordResponse>('/api/v1/record/add', {
       method: 'POST',
-      body: { bangumi_id, user_status },
+      body: { bangumi_id, user_status, recorder },
     })
   },
 
@@ -202,6 +228,24 @@ export const api = {
   regenerateToken() {
     return request<TokenRegenerateResponse>('/api/v1/auth/token/regenerate', {
       method: 'POST',
+    })
+  },
+
+  getUserInfo() {
+    return request<UserInfo>('/api/v1/user/info')
+  },
+
+  updateUserInfo(nickname?: string, avatar?: string) {
+    return request<UserResponse>('/api/v1/user/update', {
+      method: 'POST',
+      body: { nickname, avatar },
+    })
+  },
+
+  updatePassword(oldPassword: string, newPassword: string) {
+    return request<UserResponse>('/api/v1/user/password', {
+      method: 'POST',
+      body: { old_password: oldPassword, new_password: newPassword },
     })
   },
 }

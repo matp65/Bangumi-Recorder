@@ -6,3 +6,4 @@ pub mod get_recorder;
 pub mod list;
 pub mod detail_list;
 pub mod delete_recorder;
+pub mod user;

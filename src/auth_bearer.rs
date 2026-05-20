@@ -77,7 +77,7 @@ fn build_claims(user_id: i64, username: String, secret: &str) -> Result<String, 
     )
 }
 
-fn verify_password(password: &str, password_hash: &str) -> bool {
+pub fn verify_password(password: &str, password_hash: &str) -> bool {
     if password_hash.starts_with("$2a$")
         || password_hash.starts_with("$2b$")
         || password_hash.starts_with("$2y$")
@@ -409,7 +409,7 @@ pub async fn regenerate_api_token(
     }
 }
 
-fn hash_password(
+pub fn hash_password(
     password: String
 ) -> Result<String, argon2::password_hash::Error> {
     let salt = SaltString::generate(&mut OsRng);

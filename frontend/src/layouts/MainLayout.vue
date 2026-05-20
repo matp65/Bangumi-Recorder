@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { IconList, IconSearch, IconUser, IconPoweroff, IconSettings } from '@arco-design/web-vue/es/icon'
 
 const router = useRouter()
 const auth = useAuthStore()
+
+onMounted(() => {
+  auth.fetchUserInfo()
+})
 
 function handleLogout() {
   auth.logout()
@@ -15,7 +20,7 @@ function handleLogout() {
 <template>
   <a-layout style="min-height: 100vh">
     <a-layout-header style="background: #fff; border-bottom: 1px solid #e5e6eb; padding: 0 24px; display: flex; align-items: center; justify-content: space-between">
-      <div style="display: flex; align-items: center; gap: 24px">
+      <div style="display: flex; align-items: center; gap: 32px">
         <a-link style="font-size: 18px; font-weight: 700; color: #1d2129; text-decoration: none" @click="router.push('/')">
           🎬 Bangumi Recorder
         </a-link>
@@ -30,20 +35,17 @@ function handleLogout() {
           </a-menu-item>
         </a-menu>
       </div>
-      <div style="display: flex; align-items: center; gap: 12px">
-        <a-button type="text" @click="router.push({ name: 'Profile' })">
-          <template #icon><icon-settings /></template>
-        </a-button>
-        <a-tag color="arcoblue" style="cursor: pointer" @click="router.push({ name: 'Profile' })">
+      <div style="display: flex; align-items: center; gap: 8px">
+        <a-tag color="arcoblue" style="cursor: pointer; display: flex; align-items: center; gap: 6px" @click="router.push({ name: 'Profile' })">
           <template #icon><icon-user /></template>
-          {{ auth.username }}
+          {{ auth.nickname || auth.username }}
         </a-tag>
         <a-button type="text" @click="handleLogout">
           <template #icon><icon-poweroff /></template>
         </a-button>
       </div>
     </a-layout-header>
-    <a-layout-content style="padding: 24px; max-width: 1200px; margin: 0 auto; width: 100%">
+    <a-layout-content style="padding: 32px 24px; max-width: 1200px; margin: 0 auto; width: 100%">
       <router-view />
     </a-layout-content>
   </a-layout>
