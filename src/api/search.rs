@@ -66,7 +66,7 @@ fn parse_bangumi_type_easy(item: ElementRef) -> i32 {
         None => return 8, // Other
     };
 
-    let class = span.value().attr("class").unwrap_or("");
+    let class = span.value().attr("class").unwrap_or_default();
 
     match () {
         _ if class.contains("subject_type_2") => 1, // TV
@@ -533,5 +533,198 @@ pub async fn search_bangumi_by_id(
     Json(IDSearchResponse {
         status: 0,
         data: Some(result),
+    })
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LocalSearchQuery {
+    pub keyword: Option<String>,
+    pub id: Option<u32>,
+    pub page: Option<i32>,
+    pub page_size: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct LocalSearchItem {
+    pub bangumi_id: Option<String>,
+    pub other_id: Option<u32>,
+    pub title: String,
+    pub cover: Option<String>,
+    pub info: Option<String>,
+    pub r#type: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LocalSearchResponse {
+    pub status: i32,
+    pub data: Option<Vec<LocalSearchItem>>,
+    pub total: Option<i64>,
+    pub page: Option<i32>,
+    pub page_size: Option<i32>,
+}
+
+pub async fn search_local(
+    State(pool): State<MySqlPool>,
+    Json(params): Json<LocalSearchQuery>,
+) -> Json<LocalSearchResponse> {
+    let mut results: Vec<LocalSearchItem> = Vec::new();
+
+    if let Some(id) = params.id {
+        let bangumi = sqlx::query!(
+            "SELECT id, external_id, title, type, cover_url FROM bangumi_info_easy WHERE external_id = ?",
+            id
+        )
+        .fetch_optional(&pool)
+        .await;
+
+        if let Ok(Some(r)) = bangumi {
+            results.push(LocalSearchItem {
+                bangumi_id: Some(r.external_id),
+                other_id: None,
+                title: r.title,
+                cover: r.cover_url,
+                info: Some(format!("ID: {} · 本地缓存", r.id)),
+                r#type: Some(match r.r#type {
+                    1 => "TV".into(),
+                    2 => "剧场版".into(),
+                    3 => "OVA".into(),
+                    4 => "ONA".into(),
+                    5 => "TV SP".into(),
+                    6 => "Music".into(),
+                    7 => "书籍".into(),
+                    _ => "其他".into(),
+                }),
+            });
+        }
+
+        let other = sqlx::query!(
+            "SELECT id, name, description, cover_url FROM other_recorders WHERE id = ?",
+            id
+        )
+        .fetch_optional(&pool)
+        .await;
+
+        if let Ok(Some(r)) = other {
+            results.push(LocalSearchItem {
+                bangumi_id: None,
+                other_id: Some(r.id),
+                title: r.name.unwrap_or_else(|| "未命名条目".into()),
+                cover: r.cover_url,
+                info: r.description,
+                r#type: Some("自定义".into()),
+            });
+        }
+
+        let count = results.len() as i64;
+        return Json(LocalSearchResponse {
+            status: 0,
+            data: Some(results),
+            total: Some(count),
+            page: Some(1),
+            page_size: Some(20),
+        });
+    }
+
+    if let Some(keyword) = &params.keyword {
+        let keyword = keyword.trim();
+        if !keyword.is_empty() {
+            let page = params.page.unwrap_or(1).max(1);
+            let page_size = params.page_size.unwrap_or(20).max(1).min(100);
+            let like_pattern = format!("%{}%", keyword);
+
+            let bangumi_count = sqlx::query_scalar!(
+                "SELECT COUNT(*) as cnt FROM bangumi_info_easy WHERE title LIKE ?",
+                like_pattern
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap_or(0) as i64;
+
+            let other_count = sqlx::query_scalar!(
+                "SELECT COUNT(*) as cnt FROM other_recorders WHERE name LIKE ?",
+                like_pattern
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap_or(0) as i64;
+
+            let total = bangumi_count + other_count;
+
+            let fetch_limit = page * page_size;
+            let bangumi_rows = sqlx::query!(
+                "SELECT id, external_id, title, type, cover_url FROM bangumi_info_easy WHERE title LIKE ? ORDER BY id LIMIT ?",
+                like_pattern,
+                fetch_limit as i64
+            )
+            .fetch_all(&pool)
+            .await;
+
+            if let Ok(rows) = bangumi_rows {
+                for r in rows {
+                    results.push(LocalSearchItem {
+                        bangumi_id: Some(r.external_id),
+                        other_id: None,
+                        title: r.title,
+                        cover: r.cover_url,
+                        info: Some(format!("ID: {} · 本地缓存", r.id)),
+                        r#type: Some(match r.r#type {
+                            1 => "TV".into(),
+                            2 => "剧场版".into(),
+                            3 => "OVA".into(),
+                            4 => "ONA".into(),
+                            5 => "TV SP".into(),
+                            6 => "Music".into(),
+                            7 => "书籍".into(),
+                            _ => "其他".into(),
+                        }),
+                    });
+                }
+            }
+
+            let other_rows = sqlx::query!(
+                "SELECT id, name, description, cover_url FROM other_recorders WHERE name LIKE ? ORDER BY id LIMIT ?",
+                like_pattern,
+                fetch_limit as i64
+            )
+            .fetch_all(&pool)
+            .await;
+
+            if let Ok(rows) = other_rows {
+                for r in rows {
+                    results.push(LocalSearchItem {
+                        bangumi_id: None,
+                        other_id: Some(r.id),
+                        title: r.name.unwrap_or_else(|| "未命名条目".into()),
+                        cover: r.cover_url,
+                        info: r.description,
+                        r#type: Some("自定义".into()),
+                    });
+                }
+            }
+
+            let offset = ((page - 1) * page_size) as usize;
+            let paged: Vec<LocalSearchItem> = if offset >= results.len() {
+                Vec::new()
+            } else {
+                let end = (offset + page_size as usize).min(results.len());
+                results[offset..end].to_vec()
+            };
+
+            return Json(LocalSearchResponse {
+                status: 0,
+                data: Some(paged),
+                total: Some(total),
+                page: Some(page),
+                page_size: Some(page_size),
+            });
+        }
+    }
+
+    Json(LocalSearchResponse {
+        status: 0,
+        data: Some(results),
+        total: Some(0),
+        page: Some(1),
+        page_size: Some(20),
     })
 }

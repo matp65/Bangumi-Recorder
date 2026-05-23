@@ -82,7 +82,9 @@ export interface IDSearchResponse {
 
 export interface DetailListItem {
   id: number
-  local_bangumi_id: number
+  local_bangumi_id: number | null
+  other_id: number | null
+  local_other_id: number | null
   bangumi_id: string | null
   title: string | null
   type: number | null
@@ -104,6 +106,8 @@ export interface DetailListResponse {
 export interface AddRecordResponse {
   status: number
   local_bangumi_id?: number
+  other_id?: number
+  local_other_id?: number
   bangumi_id?: number
   recorder?: string
   date?: string
@@ -112,6 +116,8 @@ export interface AddRecordResponse {
 export interface GetRecorderResponse {
   status: number
   local_bangumi_id?: number
+  other_id?: number
+  local_other_id?: number
   bangumi_id?: number
   recorder?: string
   user_status?: number
@@ -127,6 +133,31 @@ export interface UpdateRecorderResponse {
 export interface DeleteRecorderResponse {
   status: number
   message?: string
+}
+
+export interface AddRecordParams {
+  bangumi_id?: number
+  other_id?: number
+  other_title?: string
+  other_description?: string
+  other_cover?: string
+  other_max_number?: number
+  other_status?: number
+  user_status?: number
+  recorder?: string
+}
+
+export interface GetRecordParams {
+  bangumi_id?: number
+  local_bangumi_id?: number
+  other_id?: number
+  local_other_id?: number
+}
+
+export interface DeleteRecordParams {
+  bangumi_id?: number
+  other_id?: number
+  local_other_id?: number
 }
 
 export interface TokenRegenerateResponse {
@@ -158,6 +189,23 @@ export interface UpdatePasswordRequest {
 export interface UserResponse {
   status: number
   message?: string
+}
+
+export interface LocalSearchItem {
+  bangumi_id: string | null
+  other_id: number | null
+  title: string
+  cover: string | null
+  info: string | null
+  type: string | null
+}
+
+export interface LocalSearchResponse {
+  status: number
+  data?: LocalSearchItem[]
+  total?: number
+  page?: number
+  page_size?: number
 }
 
 export const api = {
@@ -193,21 +241,28 @@ export const api = {
     })
   },
 
+  searchLocal(keyword?: string, id?: number, page?: number, pageSize?: number) {
+    return request<LocalSearchResponse>('/api/v1/search/local', {
+      method: 'POST',
+      body: { keyword, id, page, page_size: pageSize },
+    })
+  },
+
   getDetailList() {
     return request<DetailListResponse>('/api/v1/record/detail_list')
   },
 
-  addRecord(bangumi_id: number, user_status: number, recorder?: string) {
+  addRecord(params: AddRecordParams) {
     return request<AddRecordResponse>('/api/v1/record/add', {
       method: 'POST',
-      body: { bangumi_id, user_status, recorder },
+      body: params,
     })
   },
 
-  getRecord(bangumi_id: number) {
+  getRecord(params: GetRecordParams) {
     return request<GetRecorderResponse>('/api/v1/record/get', {
       method: 'POST',
-      body: { bangumi_id },
+      body: params,
     })
   },
 
@@ -218,10 +273,10 @@ export const api = {
     })
   },
 
-  deleteRecord(bangumi_id: number) {
+  deleteRecord(params: DeleteRecordParams) {
     return request<DeleteRecorderResponse>('/api/v1/record/delete', {
       method: 'POST',
-      body: { bangumi_id },
+      body: params,
     })
   },
 

@@ -23,7 +23,9 @@ pub struct DetailListResponse {
 #[derive(Serialize)]
 pub struct DetailListItem {
     pub id: u32,
-    pub local_bangumi_id: u32,
+    pub local_bangumi_id: Option<u32>,
+    pub other_id: Option<u32>,
+    pub local_other_id: Option<u32>,
     pub bangumi_id: Option<String>,
     pub title: Option<String>,
     pub r#type: Option<i8>,
@@ -76,7 +78,7 @@ pub async fn get_detail_list(
             ON r.bangumi_id = b.id
         LEFT JOIN bangumi_info_detailed d
             ON d.bangumi_id = b.id
-        WHERE r.user_id = ?
+        WHERE r.user_id = ? AND r.bangumi_id IS NOT NULL
         "#,
         user_id
     )
@@ -88,6 +90,8 @@ pub async fn get_detail_list(
                 results.push(DetailListItem {
                     id: r.id,
                     local_bangumi_id: r.local_bangumi_id,
+                    other_id: None,
+                    local_other_id: None,
                     bangumi_id: r.bangumi_id,
                     title: r.title,
                     r#type: r.r#type,
@@ -108,6 +112,55 @@ pub async fn get_detail_list(
                 status: -1,
                 data: None
             }))
+        }
+    }
+
+    match sqlx::query!(
+        r#"
+        SELECT 
+            r.id,
+            r.bangumi_id AS local_bangumi_id,
+            r.other_id,
+            o.name AS title,
+            o.cover_url,
+            o.max_number AS episodes,
+            r.recorder,
+            r.status,
+            r.is_delete,
+            r.updated_at,
+            r.created_at
+        FROM recordings r
+        LEFT JOIN other_recorders o ON r.other_id = o.id
+        WHERE r.user_id = ? AND r.other_id IS NOT NULL
+        "#,
+        user_id
+    )
+    .fetch_all(&pool)
+    .await
+    {
+        Ok(rows) => {
+            for r in rows {
+                results.push(DetailListItem {
+                    id: r.id,
+                    local_bangumi_id: r.local_bangumi_id,
+                    other_id: r.other_id,
+                    local_other_id: Some(r.id),
+                    bangumi_id: None,
+                    title: r.title,
+                    r#type: None,
+                    author: None,
+                    episodes: r.episodes,
+                    cover_url: r.cover_url,
+                    recorder: r.recorder,
+                    user_status: Some(r.status),
+                    is_delete: r.is_delete != 0,
+                    updated_at: r.updated_at.date(),
+                    created_at: r.created_at.date(),
+                });
+            }
+        }
+        Err(e) => {
+            log::error!("DB error: {:?}", e);
         }
     }
 

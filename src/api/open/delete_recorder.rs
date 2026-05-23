@@ -11,6 +11,8 @@ use super::api_token::check_api_token;
 #[derive(Deserialize)]
 pub struct DeleteRecorderQuery {
     pub bangumi_id: Option<u32>,
+    pub other_id: Option<u32>,
+    pub local_other_id: Option<u32>,
     pub token: Option<String>,
 }
 
@@ -24,16 +26,6 @@ pub async fn delete_recorder(
     State(pool): State<MySqlPool>,
     Query(params): Query<DeleteRecorderQuery>,
 ) -> Result<Json<DeleteRecorderResponse>, StatusCode> {
-    let bangumi_external_id = match params.bangumi_id {
-        Some(id) => id,
-        None => {
-            return Ok(Json(DeleteRecorderResponse {
-                status: -1,
-                message: Some("Missing bangumi_id".to_string()),
-            }));
-        }
-    };
-
     if params.token.is_none() {
         return Err(StatusCode::UNAUTHORIZED);
     }
@@ -41,8 +33,78 @@ pub async fn delete_recorder(
     let token = params.token.as_ref().unwrap();
     let user_id = match check_api_token(&pool, token).await {
         Some(id) => id,
+        None => return Err(StatusCode::UNAUTHORIZED),
+    };
+
+    if let Some(local_other_id) = params.local_other_id {
+        match sqlx::query!(
+            "UPDATE recordings SET is_delete = 1 WHERE user_id = ? AND id = ? AND is_delete = 0",
+            user_id,
+            local_other_id
+        )
+        .execute(&pool)
+        .await
+        {
+            Ok(result) => {
+                if result.rows_affected() == 0 {
+                    return Ok(Json(DeleteRecorderResponse {
+                        status: -3,
+                        message: Some("Recording not found".to_string()),
+                    }));
+                }
+                return Ok(Json(DeleteRecorderResponse {
+                    status: 0,
+                    message: Some("Deleted successfully".to_string()),
+                }));
+            }
+            Err(e) => {
+                log::error!("Failed to delete recording: {}", e);
+                return Ok(Json(DeleteRecorderResponse {
+                    status: -2,
+                    message: Some("Failed to delete recording".to_string()),
+                }));
+            }
+        }
+    }
+
+    if let Some(other_id) = params.other_id {
+        match sqlx::query!(
+            "UPDATE recordings SET is_delete = 1 WHERE user_id = ? AND other_id = ? AND is_delete = 0",
+            user_id,
+            other_id
+        )
+        .execute(&pool)
+        .await
+        {
+            Ok(result) => {
+                if result.rows_affected() == 0 {
+                    return Ok(Json(DeleteRecorderResponse {
+                        status: -3,
+                        message: Some("Recording not found".to_string()),
+                    }));
+                }
+                return Ok(Json(DeleteRecorderResponse {
+                    status: 0,
+                    message: Some("Deleted successfully".to_string()),
+                }));
+            }
+            Err(e) => {
+                log::error!("Failed to delete recording: {}", e);
+                return Ok(Json(DeleteRecorderResponse {
+                    status: -2,
+                    message: Some("Failed to delete recording".to_string()),
+                }));
+            }
+        }
+    }
+
+    let bangumi_external_id = match params.bangumi_id {
+        Some(id) => id,
         None => {
-            return Err(StatusCode::UNAUTHORIZED);
+            return Ok(Json(DeleteRecorderResponse {
+                status: -1,
+                message: Some("Missing bangumi_id".to_string()),
+            }));
         }
     };
 

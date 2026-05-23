@@ -51,6 +51,10 @@ function getCoverUrl(item: DetailListItem) {
   return undefined
 }
 
+function isBangumi(item: DetailListItem) {
+  return !!item.bangumi_id
+}
+
 async function fetchRecords() {
   loading.value = true
   try {
@@ -74,28 +78,53 @@ function goDetail(bangumiId: string) {
 const deleting = ref<Record<string, boolean>>({})
 
 async function handleDelete(item: DetailListItem) {
-  if (!item.bangumi_id) return
-  Modal.warning({
-    title: '确认删除',
-    content: `确定要删除「${item.title || '未知标题'}」的追番记录吗？`,
-    hideCancel: false,
-    async onOk() {
-      deleting.value[item.id] = true
-      try {
-        const res = await api.deleteRecord(parseInt(item.bangumi_id!))
-        if (res.status === 0) {
-          Message.success('删除成功')
-          records.value = records.value.filter(r => r.id !== item.id)
-        } else {
-          Message.error(res.message || '删除失败')
+  if (isBangumi(item)) {
+    if (!item.bangumi_id) return
+    Modal.warning({
+      title: '确认删除',
+      content: `确定要删除「${item.title || '未知标题'}」的追番记录吗？`,
+      hideCancel: false,
+      async onOk() {
+        deleting.value[String(item.id)] = true
+        try {
+          const res = await api.deleteRecord({ bangumi_id: parseInt(item.bangumi_id!) })
+          if (res.status === 0) {
+            Message.success('删除成功')
+            records.value = records.value.filter(r => r.id !== item.id)
+          } else {
+            Message.error(res.message || '删除失败')
+          }
+        } catch {
+          Message.error('网络请求失败')
+        } finally {
+          deleting.value[String(item.id)] = false
         }
-      } catch {
-        Message.error('网络请求失败')
-      } finally {
-        deleting.value[item.id] = false
-      }
-    },
-  })
+      },
+    })
+  } else {
+    if (!item.local_other_id) return
+    Modal.warning({
+      title: '确认删除',
+      content: `确定要删除「${item.title || '未知标题'}」的自定义条目吗？`,
+      hideCancel: false,
+      async onOk() {
+        deleting.value[String(item.id)] = true
+        try {
+          const res = await api.deleteRecord({ local_other_id: item.local_other_id! })
+          if (res.status === 0) {
+            Message.success('删除成功')
+            records.value = records.value.filter(r => r.id !== item.id)
+          } else {
+            Message.error(res.message || '删除失败')
+          }
+        } catch {
+          Message.error('网络请求失败')
+        } finally {
+          deleting.value[String(item.id)] = false
+        }
+      },
+    })
+  }
 }
 
 onMounted(fetchRecords)
@@ -118,7 +147,8 @@ onMounted(fetchRecords)
           :key="item.id"
           hoverable
           class="bangumi-card"
-          @click="item.bangumi_id && goDetail(item.bangumi_id)"
+          :class="{ 'is-other': !isBangumi(item) }"
+          @click="isBangumi(item) && item.bangumi_id && goDetail(item.bangumi_id)"
           :body-style="{ padding: '16px' }"
         >
           <div style="display: flex; gap: 12px">
@@ -138,12 +168,20 @@ onMounted(fetchRecords)
               </div>
             </div>
             <div style="flex: 1; min-width: 0">
-              <div style="font-weight: 600; font-size: 14px; color: #1d2129; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-                {{ item.title || '未知标题' }}
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px">
+                <span style="font-weight: 600; font-size: 14px; color: #1d2129; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                  {{ item.title || '未知标题' }}
+                </span>
+                <a-tag v-if="!isBangumi(item)" color="purple" size="small">自定义</a-tag>
               </div>
               <div style="font-size: 12px; color: #86909c; margin-bottom: 8px">
                 <a-tag :color="getStatusColor(item.user_status)" size="small" style="margin-right: 4px">{{ getStatusLabel(item.user_status) }}</a-tag>
-                {{ getTypeLabel(item.type) }} · {{ item.episodes ? item.episodes + '话' : '' }}
+                <template v-if="isBangumi(item)">
+                  {{ getTypeLabel(item.type) }} · {{ item.episodes ? item.episodes + '话' : '' }}
+                </template>
+                <template v-else>
+                  {{ item.episodes ? item.episodes + '项' : '' }}
+                </template>
               </div>
               <div v-if="item.recorder" style="margin-bottom: 4px">
                 <a-tag color="arcoblue" size="small">进度: {{ item.recorder }}</a-tag>
@@ -157,7 +195,7 @@ onMounted(fetchRecords)
                 type="text"
                 status="danger"
                 size="small"
-                :loading="deleting[item.id]"
+                :loading="deleting[String(item.id)]"
                 @click.stop="handleDelete(item)"
               >
                 <template #icon><icon-delete /></template>

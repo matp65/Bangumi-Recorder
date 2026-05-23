@@ -23,7 +23,7 @@ pub struct ListRecorderQuery {
 #[derive(Serialize)]
 pub struct RecorderItem {
     pub id: u32,
-    pub local_bangumi_id: u32,
+    pub local_bangumi_id: Option<u32>,
     pub bangumi_id: Option<String>,
     pub recorder: Option<String>,
     pub user_status: Option<i8>,
@@ -62,7 +62,7 @@ pub async fn list_recorder(
         FROM recordings r
         LEFT JOIN bangumi_info_easy b
             ON r.bangumi_id = b.id
-        WHERE r.user_id = ?
+        WHERE r.user_id = ? AND r.bangumi_id IS NOT NULL
         "#,
         user_id
     )
@@ -81,18 +81,52 @@ pub async fn list_recorder(
                     date: r.updated_at.date(),
                 });
             }
-
-            Ok(Json(ListRecorderResponse {
-                status: 0,
-                data: Some(results),
-            }))
         }
 
         Err(_) => {
-            Ok(Json(ListRecorderResponse {
+            return Ok(Json(ListRecorderResponse {
                 status: -1,
                 data: None,
             }))
         }
     }
+
+    match sqlx::query!(
+        r#"
+        SELECT 
+            r.id,
+            r.bangumi_id AS local_bangumi_id,
+            r.recorder,
+            r.status,
+            r.is_delete,
+            r.updated_at
+        FROM recordings r
+        WHERE r.user_id = ? AND r.other_id IS NOT NULL
+        "#,
+        user_id
+    )
+    .fetch_all(&pool)
+    .await
+    {
+        Ok(rows) => {
+            for r in rows {
+                results.push(RecorderItem {
+                    id: r.id,
+                    local_bangumi_id: r.local_bangumi_id,
+                    bangumi_id: None,
+                    recorder: r.recorder,
+                    user_status: Some(r.status),
+                    is_delete: r.is_delete != 0,
+                    date: r.updated_at.date(),
+                });
+            }
+        }
+
+        Err(_) => {}
+    }
+
+    Ok(Json(ListRecorderResponse {
+        status: 0,
+        data: Some(results),
+    }))
 }

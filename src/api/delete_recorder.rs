@@ -10,6 +10,8 @@ use crate::auth_bearer::AuthUser;
 #[derive(Deserialize)]
 pub struct DeleteRecorderQuery {
     pub bangumi_id: Option<u32>,
+    pub other_id: Option<u32>,
+    pub local_other_id: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -23,6 +25,68 @@ pub async fn delete_recorder(
     Extension(auth_user): Extension<AuthUser>,
     Json(params): Json<DeleteRecorderQuery>,
 ) -> Json<DeleteRecorderResponse> {
+    if let Some(local_other_id) = params.local_other_id {
+        match sqlx::query!(
+            "UPDATE recordings SET is_delete = 1 WHERE user_id = ? AND id = ? AND is_delete = 0",
+            auth_user.user_id,
+            local_other_id
+        )
+        .execute(&pool)
+        .await
+        {
+            Ok(result) => {
+                if result.rows_affected() == 0 {
+                    return Json(DeleteRecorderResponse {
+                        status: -3,
+                        message: Some("Recording not found".to_string()),
+                    });
+                }
+                return Json(DeleteRecorderResponse {
+                    status: 0,
+                    message: Some("Deleted successfully".to_string()),
+                });
+            }
+            Err(e) => {
+                log::error!("Failed to delete recording: {}", e);
+                return Json(DeleteRecorderResponse {
+                    status: -2,
+                    message: Some("Failed to delete recording".to_string()),
+                });
+            }
+        }
+    }
+
+    if let Some(other_id) = params.other_id {
+        match sqlx::query!(
+            "UPDATE recordings SET is_delete = 1 WHERE user_id = ? AND other_id = ? AND is_delete = 0",
+            auth_user.user_id,
+            other_id
+        )
+        .execute(&pool)
+        .await
+        {
+            Ok(result) => {
+                if result.rows_affected() == 0 {
+                    return Json(DeleteRecorderResponse {
+                        status: -3,
+                        message: Some("Recording not found".to_string()),
+                    });
+                }
+                return Json(DeleteRecorderResponse {
+                    status: 0,
+                    message: Some("Deleted successfully".to_string()),
+                });
+            }
+            Err(e) => {
+                log::error!("Failed to delete recording: {}", e);
+                return Json(DeleteRecorderResponse {
+                    status: -2,
+                    message: Some("Failed to delete recording".to_string()),
+                });
+            }
+        }
+    }
+
     let bangumi_external_id = match params.bangumi_id {
         Some(id) => id,
         None => {

@@ -15,7 +15,7 @@ pub struct UserInfo {
     pub email: String,
     pub avatar: String,
     pub status: i8,
-    pub reg_time: NaiveDate,
+    pub reg_time: Option<NaiveDate>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,7 +44,7 @@ pub async fn get_info(
 
     let user_info = sqlx::query_as!(
         UserInfo,
-        "SELECT id, username, nickname, email, avatar, status, created_at AS reg_time FROM users WHERE id = ?",
+        "SELECT id, username, nickname, email, avatar, status, DATE(created_at) AS reg_time FROM users WHERE id = ?",
         user_id
     )
     .fetch_one(&pool)
@@ -59,7 +59,7 @@ pub async fn get_info(
             email: String::new(),
             avatar: String::new(),
             status: 0,
-            reg_time: NaiveDate::from_ymd_opt(1970, 1, 1).expect("Failed to create date"),
+            reg_time: None,
         }),
     }
 }

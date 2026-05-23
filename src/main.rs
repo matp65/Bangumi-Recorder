@@ -75,6 +75,7 @@ async fn main() {
     let api_router = Router::new()
         .route("/search/bangumi", post(api::search::search_bangumi_by_title))
         .route("/search/bangumi/id", post(api::search::search_bangumi_by_id))
+        .route("/search/local", post(api::search::search_local))
         .route("/record/add", post(api::new::add_record))
         .route("/record/update", post(api::update_recorder::update_user_recorder))
         .route("/record/delete", post(api::delete_recorder::delete_recorder))

@@ -46,7 +46,7 @@ async function fetchData() {
   try {
     const [infoRes, recordRes] = await Promise.all([
       api.searchBangumiById(parseInt(props.bangumi_id)),
-      api.getRecord(parseInt(props.bangumi_id)),
+      api.getRecord({ bangumi_id: parseInt(props.bangumi_id) }),
     ])
     if (infoRes.status === 0 && infoRes.data) {
       info.value = infoRes.data
@@ -126,7 +126,7 @@ async function handleDelete() {
     async onOk() {
       removing.value = true
       try {
-        const res = await api.deleteRecord(parseInt(props.bangumi_id))
+        const res = await api.deleteRecord({ bangumi_id: parseInt(props.bangumi_id) })
         if (res.status === 0) {
           Message.success('删除成功')
           router.push('/')
