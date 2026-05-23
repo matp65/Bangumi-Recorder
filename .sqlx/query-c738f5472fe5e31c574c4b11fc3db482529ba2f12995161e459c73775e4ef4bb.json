@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "UPDATE recordings SET is_delete = 1 WHERE user_id = ? AND other_id = ? AND is_delete = 0",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "c738f5472fe5e31c574c4b11fc3db482529ba2f12995161e459c73775e4ef4bb"
+}

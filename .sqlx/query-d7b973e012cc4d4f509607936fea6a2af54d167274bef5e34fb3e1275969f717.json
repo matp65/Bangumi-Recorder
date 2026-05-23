@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "SELECT id, username, nickname, email, avatar, status, created_at AS reg_time FROM users WHERE id = ?",
+  "query": "SELECT id, bangumi_id, other_id, recorder, status, is_delete, updated_at FROM recordings WHERE user_id = ? AND other_id = ? AND is_delete = 0",
   "describe": {
     "columns": [
       {
@@ -14,42 +14,33 @@
       },
       {
         "ordinal": 1,
-        "name": "username",
+        "name": "bangumi_id",
         "type_info": {
-          "type": "VarString",
-          "flags": "NOT_NULL | UNIQUE_KEY | NO_DEFAULT_VALUE",
-          "max_size": 200
+          "type": "Long",
+          "flags": "MULTIPLE_KEY | UNSIGNED",
+          "max_size": 10
         }
       },
       {
         "ordinal": 2,
-        "name": "nickname",
+        "name": "other_id",
         "type_info": {
-          "type": "VarString",
-          "flags": "NOT_NULL",
-          "max_size": 1020
+          "type": "Long",
+          "flags": "MULTIPLE_KEY | UNSIGNED",
+          "max_size": 10
         }
       },
       {
         "ordinal": 3,
-        "name": "email",
+        "name": "recorder",
         "type_info": {
           "type": "VarString",
-          "flags": "NOT_NULL",
+          "flags": "",
           "max_size": 1020
         }
       },
       {
         "ordinal": 4,
-        "name": "avatar",
-        "type_info": {
-          "type": "VarString",
-          "flags": "NOT_NULL",
-          "max_size": 1020
-        }
-      },
-      {
-        "ordinal": 5,
         "name": "status",
         "type_info": {
           "type": "Tiny",
@@ -58,27 +49,36 @@
         }
       },
       {
+        "ordinal": 5,
+        "name": "is_delete",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL",
+          "max_size": 4
+        }
+      },
+      {
         "ordinal": 6,
-        "name": "reg_time",
+        "name": "updated_at",
         "type_info": {
           "type": "Datetime",
-          "flags": "NOT_NULL | BINARY",
+          "flags": "NOT_NULL | BINARY | ON_UPDATE_NOW",
           "max_size": 19
         }
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       false,
-      false,
-      false,
-      false,
+      true,
+      true,
+      true,
       false,
       false,
       false
     ]
   },
-  "hash": "5c056e010266dd320171a783f96fe3c48c5fc365922e7fe55edc3d2bd81e46f1"
+  "hash": "d7b973e012cc4d4f509607936fea6a2af54d167274bef5e34fb3e1275969f717"
 }

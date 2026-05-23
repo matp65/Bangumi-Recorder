@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT \n            r.id,\n            r.bangumi_id AS local_bangumi_id,\n            b.external_id AS bangumi_id,\n            r.recorder,\n            r.status,\n            r.is_delete,\n            r.updated_at\n        FROM recordings r\n        LEFT JOIN bangumi_info_easy b\n            ON r.bangumi_id = b.id\n        WHERE r.user_id = ?\n        ",
+  "query": "\n        SELECT \n            r.id,\n            r.bangumi_id AS local_bangumi_id,\n            b.external_id AS bangumi_id,\n            r.recorder,\n            r.status,\n            r.is_delete,\n            r.updated_at\n        FROM recordings r\n        LEFT JOIN bangumi_info_easy b\n            ON r.bangumi_id = b.id\n        WHERE r.user_id = ? AND r.bangumi_id IS NOT NULL\n        ",
   "describe": {
     "columns": [
       {
@@ -17,7 +17,7 @@
         "name": "local_bangumi_id",
         "type_info": {
           "type": "Long",
-          "flags": "NOT_NULL | MULTIPLE_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "flags": "MULTIPLE_KEY | UNSIGNED",
           "max_size": 10
         }
       },
@@ -72,7 +72,7 @@
     },
     "nullable": [
       false,
-      false,
+      true,
       true,
       true,
       false,
@@ -80,5 +80,5 @@
       false
     ]
   },
-  "hash": "95f0e3a461a850d530a8a36eeebb265ca83f5211d7e0691bbe3fe2df0e7af977"
+  "hash": "27926d0d326d0bdad795896682a3bf7c30ffb021c687cfb6abcd614f9aa0af2a"
 }

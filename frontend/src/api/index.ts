@@ -48,6 +48,7 @@ export interface RegisterResponse {
 
 export interface ConfigResponse {
   allow_register: boolean
+  register_need_token: boolean
 }
 
 export interface BangumiSearchItem {
@@ -216,10 +217,10 @@ export const api = {
     })
   },
 
-  register(username: string, password: string) {
+  register(username: string, password: string, registerToken?: string) {
     return request<RegisterResponse>('/auth/register', {
       method: 'POST',
-      body: { username, password },
+      body: { username, password, register_token: registerToken },
     })
   },
 

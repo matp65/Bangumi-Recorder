@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO recordings (user_id, other_id, status, recorder) VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "cde1e4809377959497339e44cef069554548b79de32fc2c2165dfab013685874"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO other_recorders (name, description, cover_url, max_number, status, add_user) VALUES (?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "9912cbe10beee31470e4d2c0f8bc6b624ea63d89314fd9f0722083c5e97d3246"
+}

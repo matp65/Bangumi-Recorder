@@ -37,7 +37,8 @@ pub struct LoginResponse {
 #[derive(Deserialize)]
 pub struct RegisterRequest {
     pub username: Option<String>,
-    pub password: Option<String>
+    pub password: Option<String>,
+    pub register_token: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -245,6 +246,40 @@ pub async fn register(
         );
     }
 
+    let register_need_token = std::env::var("REGISTER_NEED_TOKEN")
+        .unwrap_or_else(|_| "false".to_string())
+        .to_lowercase() == "true";
+
+    if register_need_token {
+        let token = std::env::var("REGISTER_TOKEN").unwrap_or_default();
+        if token.is_empty() {
+            return (
+                StatusCode::UNAUTHORIZED,
+                AxumJson(RegisterResponse {
+                    status: -7,
+                    token: None,
+                    api_token: None,
+                    message: Some("Registration token is not configured".to_string()),
+                }),
+            );
+        }
+    }
+
+    let config_register_token = std::env::var("REGISTER_TOKEN")
+        .unwrap_or_default();
+
+    if register_need_token && payload.register_token.as_deref() != Some(config_register_token.as_str()) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            AxumJson(RegisterResponse {
+                status: -8,
+                token: None,
+                api_token: None,
+                message: Some("Invalid registration token".to_string()),
+            }),
+        );
+    }
+
     let (username, password) = match (payload.username, payload.password) {
         (Some(u), Some(p)) => (u, p),
         _ => {
@@ -426,6 +461,7 @@ pub fn hash_password(
 #[derive(Serialize)]
 pub struct ConfigResponse {
     pub allow_register: bool,
+    pub register_need_token: bool,
 }
 
 pub async fn get_config() -> impl IntoResponse {
@@ -433,10 +469,15 @@ pub async fn get_config() -> impl IntoResponse {
         .unwrap_or_else(|_| "true".to_string())
         .to_lowercase();
     
+    let register_need_token = std::env::var("REGISTER_NEED_TOKEN")
+        .unwrap_or_else(|_| "true".to_string())
+        .to_lowercase();
+
     (
         StatusCode::OK,
         AxumJson(ConfigResponse {
             allow_register: allow_register != "false",
+            register_need_token: register_need_token != "false",
         }),
     )
 }

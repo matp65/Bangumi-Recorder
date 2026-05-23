@@ -48,8 +48,8 @@ export const useAuthStore = defineStore('auth', () => {
     return false
   }
 
-  async function register(uname: string, password: string) {
-    const res = await api.register(uname, password)
+  async function register(uname: string, password: string, registerToken?: string) {
+    const res = await api.register(uname, password, registerToken)
     if (res.status === 0 && res.token) {
       token.value = res.token
       username.value = uname

@@ -10,11 +10,13 @@ const auth = useAuthStore()
 
 const isLogin = ref(true)
 const allowRegister = ref(true)
+const registerNeedToken = ref(false)
 const rememberAccount = ref(auth.rememberAccount)
 
 const form = reactive({
   username: '',
   password: '',
+  registerToken: '',
 })
 
 const loading = ref(false)
@@ -23,6 +25,7 @@ onMounted(async () => {
   try {
     const config = await auth.getConfig()
     allowRegister.value = config.allow_register
+    registerNeedToken.value = config.register_need_token
   } catch (error) {
     console.error('Failed to fetch config:', error)
     allowRegister.value = true
@@ -44,7 +47,7 @@ async function handleSubmit() {
     if (isLogin.value) {
       success = await auth.login(form.username, form.password)
     } else {
-      success = await auth.register(form.username, form.password)
+      success = await auth.register(form.username, form.password, form.registerToken)
     }
     if (success) {
       auth.saveRememberedUsername(form.username)
@@ -85,6 +88,14 @@ async function handleSubmit() {
             size="large"
             allow-clear
             @keyup.enter="handleSubmit"
+          />
+        </a-form-item>
+        <a-form-item v-if="!isLogin && registerNeedToken" field="registerToken">
+          <a-input-password
+            v-model="form.registerToken"
+            placeholder="注册令牌"
+            size="large"
+            allow-clear
           />
         </a-form-item>
         <a-form-item>

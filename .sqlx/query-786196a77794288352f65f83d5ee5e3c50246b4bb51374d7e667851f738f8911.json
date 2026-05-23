@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT \n            r.id,\n            r.bangumi_id AS local_bangumi_id,\n            b.external_id AS bangumi_id,\n            b.title,\n            b.type,\n            d.author,\n            d.episodes,\n            b.cover_url,\n            r.recorder,\n            r.status,\n            r.is_delete,\n            r.updated_at,\n            r.created_at\n        FROM recordings r\n        LEFT JOIN bangumi_info_easy b\n            ON r.bangumi_id = b.id\n        LEFT JOIN bangumi_info_detailed d\n            ON d.bangumi_id = b.id\n        WHERE r.user_id = ?\n        ",
+  "query": "\n        SELECT \n            r.id,\n            r.bangumi_id AS local_bangumi_id,\n            b.external_id AS bangumi_id,\n            b.title,\n            b.type,\n            d.author,\n            d.episodes,\n            b.cover_url,\n            r.recorder,\n            r.status,\n            r.is_delete,\n            r.updated_at,\n            r.created_at\n        FROM recordings r\n        LEFT JOIN bangumi_info_easy b\n            ON r.bangumi_id = b.id\n        LEFT JOIN bangumi_info_detailed d\n            ON d.bangumi_id = b.id\n        WHERE r.user_id = ? AND r.bangumi_id IS NOT NULL\n        ",
   "describe": {
     "columns": [
       {
@@ -17,7 +17,7 @@
         "name": "local_bangumi_id",
         "type_info": {
           "type": "Long",
-          "flags": "NOT_NULL | MULTIPLE_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "flags": "MULTIPLE_KEY | UNSIGNED",
           "max_size": 10
         }
       },
@@ -126,7 +126,7 @@
     },
     "nullable": [
       false,
-      false,
+      true,
       true,
       true,
       true,
@@ -140,5 +140,5 @@
       false
     ]
   },
-  "hash": "b15056049362c2a8eae948a5ed6cb5f5d84d0d137620463d694bc51d1954692c"
+  "hash": "786196a77794288352f65f83d5ee5e3c50246b4bb51374d7e667851f738f8911"
 }
