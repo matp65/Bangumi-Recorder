@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "SELECT id, username, nickname, email, avatar, status, DATE(created_at) AS reg_time FROM users WHERE id = ?",
+  "query": "SELECT id, uuid, username, nickname, email, avatar, status, DATE(created_at) AS reg_time FROM users WHERE id = ?",
   "describe": {
     "columns": [
       {
@@ -14,6 +14,15 @@
       },
       {
         "ordinal": 1,
+        "name": "uuid",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | UNIQUE_KEY",
+          "max_size": 144
+        }
+      },
+      {
+        "ordinal": 2,
         "name": "username",
         "type_info": {
           "type": "VarString",
@@ -22,7 +31,7 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "nickname",
         "type_info": {
           "type": "VarString",
@@ -31,7 +40,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "email",
         "type_info": {
           "type": "VarString",
@@ -40,7 +49,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "avatar",
         "type_info": {
           "type": "VarString",
@@ -49,7 +58,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "status",
         "type_info": {
           "type": "Tiny",
@@ -58,7 +67,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "reg_time",
         "type_info": {
           "type": "Date",
@@ -77,8 +86,9 @@
       false,
       false,
       false,
+      false,
       true
     ]
   },
-  "hash": "11369194b9030569ee1adf472d990ff0cfbbaa1f1b86e49e731cf01f92991f93"
+  "hash": "90271861b570b090f380cd27a8427ffb4ed24c6a3d5aa4345738a1fcb9b2500e"
 }
