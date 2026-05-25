@@ -37,10 +37,10 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(uname: string, password: string) {
     const res = await api.login(uname, password)
-    if (res.status === 0 && res.token) {
-      token.value = res.token
+    if (res.status === 0 && res.data?.token) {
+      token.value = res.data.token
       username.value = uname
-      localStorage.setItem('token', res.token)
+      localStorage.setItem('token', res.data.token)
       localStorage.setItem('username', uname)
       await fetchUserInfo()
       return true
@@ -50,10 +50,10 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function register(uname: string, password: string, registerToken?: string) {
     const res = await api.register(uname, password, registerToken)
-    if (res.status === 0 && res.token) {
-      token.value = res.token
+    if (res.status === 0 && res.data?.token) {
+      token.value = res.data.token
       username.value = uname
-      localStorage.setItem('token', res.token)
+      localStorage.setItem('token', res.data.token)
       localStorage.setItem('username', uname)
       await fetchUserInfo()
       return true
@@ -64,10 +64,10 @@ export const useAuthStore = defineStore('auth', () => {
   async function fetchUserInfo() {
     if (!token.value) return
     try {
-      const info = await api.getUserInfo()
-      if (info.id) {
-        nickname.value = info.nickname || null
-        avatar.value = info.avatar || null
+      const res = await api.getUserInfo()
+      if (res.status === 0 && res.data?.id) {
+        nickname.value = res.data.nickname || null
+        avatar.value = res.data.avatar || null
       }
     } catch {
     }

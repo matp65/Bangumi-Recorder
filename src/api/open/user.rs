@@ -1,68 +1,30 @@
 use axum::{
-    extract::{State, Query},
-    Json, http::StatusCode
+    extract::{Query, State},
+    http::StatusCode,
+    Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sqlx::mysql::MySqlPool;
-use chrono::NaiveDate;
 
-use super::api_token::check_api_token;
+use super::api_token::require_api_token;
+use crate::auth_bearer::AuthUser;
+
+pub use crate::api::user::UserInfo;
 
 #[derive(Debug, Deserialize)]
 pub struct GetTokenQuery {
     pub token: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct UserInfo {
-    pub id: i64,
-    pub username: String,
-    pub nickname: String,
-    pub email: String,
-    pub avatar: String,
-    pub status: i8,
-    pub reg_time: Option<NaiveDate>,
-}
-
 pub async fn get_info(
     State(pool): State<MySqlPool>,
-    Query(params): Query<GetTokenQuery>
+    Query(params): Query<GetTokenQuery>,
 ) -> Result<Json<UserInfo>, StatusCode> {
+    let _user_id = require_api_token(&pool, params.token.as_deref()).await?;
 
-    let token = match params.token.as_ref() {
-        Some(token) => token,
-        None => return Err(StatusCode::UNAUTHORIZED),
-    };
-    let user_id = match check_api_token(&pool, token).await {
-        Some(id) => id,
-        None => return Err(StatusCode::UNAUTHORIZED),
-    };
-    let user_info = sqlx::query_as!(
-        UserInfo,
-        "SELECT id, username, nickname, email, avatar, status, DATE(created_at) AS reg_time FROM users WHERE id = ?",
-        user_id
+    Ok(crate::api::user::get_info(
+        State(pool),
+        axum::extract::Extension(AuthUser { user_id: _user_id }),
     )
-    .fetch_one(&pool)
-    .await;
-
-    match user_info {
-        Ok(info) => Ok(Json(UserInfo {
-            id: info.id,
-            username: info.username,
-            nickname: info.nickname,
-            email: info.email,
-            avatar: info.avatar,
-            status: info.status,
-            reg_time: info.reg_time,
-        })),
-        Err(_) => Ok(Json(UserInfo {
-            id: 0,
-            username: String::new(),
-            nickname: String::new(),
-            email: String::new(),
-            avatar: String::new(),
-            status: 0,
-            reg_time: None,
-        })),
-    }
+    .await)
 }

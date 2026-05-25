@@ -210,7 +210,7 @@ pub async fn search_bangumi_by_title(
         {
             Ok(Some(_)) => {
                 let _ = sqlx::query!(
-                    "UPDATE bangumi_info_easy SET title = ?, type = ?, info = ?, cover_url = ? WHERE external_id = ?",
+                    "UPDATE bangumi_info_easy SET title = ?, type = ?, info = ?, cover_url = ?, updated_at = CURRENT_TIMESTAMP WHERE external_id = ?",
                     result.title,
                     result.r#type,
                     result.info,
@@ -503,7 +503,7 @@ pub async fn search_bangumi_by_id(
     {
         Ok(Some(_)) => {
             let _ = sqlx::query!(
-                "UPDATE bangumi_info_detailed SET type = ?, author = ?, release_date = ?, episodes = ?, description = ? WHERE bangumi_id = ?",
+                "UPDATE bangumi_info_detailed SET type = ?, author = ?, release_date = ?, episodes = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE bangumi_id = ?",
                 result.r#type,
                 result.author,
                 result.release_date,

@@ -87,7 +87,7 @@ async function handleDelete(item: DetailListItem) {
       async onOk() {
         deleting.value[String(item.id)] = true
         try {
-          const res = await api.deleteRecord({ bangumi_id: parseInt(item.bangumi_id!) })
+          const res = await api.deleteRecordByBangumi(parseInt(item.bangumi_id!))
           if (res.status === 0) {
             Message.success('删除成功')
             records.value = records.value.filter(r => r.id !== item.id)
@@ -110,7 +110,7 @@ async function handleDelete(item: DetailListItem) {
       async onOk() {
         deleting.value[String(item.id)] = true
         try {
-          const res = await api.deleteRecord({ local_other_id: item.local_other_id! })
+          const res = await api.deleteRecordById(item.local_other_id!)
           if (res.status === 0) {
             Message.success('删除成功')
             records.value = records.value.filter(r => r.id !== item.id)

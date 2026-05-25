@@ -27,3 +27,4 @@ urlencoding = "2.1.3"
 http = "1"
 sha2 = "0.10"
 rust-embed = "8"
+clap = { version = "4", features = ["derive"] }

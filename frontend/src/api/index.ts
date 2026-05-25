@@ -33,20 +33,27 @@ async function request<T = any>(url: string, options: RequestOptions = {}): Prom
   return data as T
 }
 
-export interface LoginResponse {
+// ---- v2 unified response wrapper (for reference) ----
+// { status: 0|-1, data?: T, message?: string }
+
+export interface ApiResponse<T> {
   status: number
-  token?: string
+  data?: T
   message?: string
 }
 
-export interface RegisterResponse {
-  status: number
-  token?: string
-  api_token?: string
-  message?: string
+// ---- v2 data payload types ----
+
+export interface LoginData {
+  token: string
 }
 
-export interface ConfigResponse {
+export interface RegisterData {
+  token: string
+  api_token: string
+}
+
+export interface ConfigData {
   allow_register: boolean
   register_need_token: boolean
 }
@@ -60,11 +67,6 @@ export interface BangumiSearchItem {
   type: number
 }
 
-export interface SearchBangumiResponse {
-  status: number
-  data?: BangumiSearchItem[]
-}
-
 export interface BangumiItem {
   bangumi_id: string
   title: string
@@ -74,11 +76,6 @@ export interface BangumiItem {
   release_date: string | null
   episodes: number
   description: string
-}
-
-export interface IDSearchResponse {
-  status: number
-  data?: BangumiItem
 }
 
 export interface DetailListItem {
@@ -99,13 +96,7 @@ export interface DetailListItem {
   created_at: string
 }
 
-export interface DetailListResponse {
-  status: number
-  data?: DetailListItem[]
-}
-
-export interface AddRecordResponse {
-  status: number
+export interface AddRecordData {
   local_bangumi_id?: number
   other_id?: number
   local_other_id?: number
@@ -114,8 +105,7 @@ export interface AddRecordResponse {
   date?: string
 }
 
-export interface GetRecorderResponse {
-  status: number
+export interface GetRecordData {
   local_bangumi_id?: number
   other_id?: number
   local_other_id?: number
@@ -124,16 +114,6 @@ export interface GetRecorderResponse {
   user_status?: number
   is_delete?: boolean
   date?: string
-}
-
-export interface UpdateRecorderResponse {
-  status: number
-  message?: string
-}
-
-export interface DeleteRecorderResponse {
-  status: number
-  message?: string
 }
 
 export interface AddRecordParams {
@@ -148,23 +128,8 @@ export interface AddRecordParams {
   recorder?: string
 }
 
-export interface GetRecordParams {
-  bangumi_id?: number
-  local_bangumi_id?: number
-  other_id?: number
-  local_other_id?: number
-}
-
-export interface DeleteRecordParams {
-  bangumi_id?: number
-  other_id?: number
-  local_other_id?: number
-}
-
-export interface TokenRegenerateResponse {
-  status: number
-  api_token?: string
-  message?: string
+export interface TokenData {
+  api_token: string
 }
 
 export interface UserInfo {
@@ -177,21 +142,6 @@ export interface UserInfo {
   reg_time: string
 }
 
-export interface UpdateUserInfo {
-  nickname?: string
-  avatar?: string
-}
-
-export interface UpdatePasswordRequest {
-  old_password?: string
-  new_password?: string
-}
-
-export interface UserResponse {
-  status: number
-  message?: string
-}
-
 export interface LocalSearchItem {
   bangumi_id: string | null
   other_id: number | null
@@ -201,106 +151,122 @@ export interface LocalSearchItem {
   type: string | null
 }
 
-export interface LocalSearchResponse {
-  status: number
-  data?: LocalSearchItem[]
-  total?: number
-  page?: number
-  page_size?: number
+export interface LocalSearchResult {
+  items: LocalSearchItem[]
+  total: number
+  page: number
+  page_size: number
 }
 
+// ---- v2 API endpoints ----
+
 export const api = {
+  // auth
   login(username: string, password: string) {
-    return request<LoginResponse>('/auth/login', {
+    return request<ApiResponse<LoginData>>('/api/v2/auth/login', {
       method: 'POST',
       body: { username, password },
     })
   },
 
   register(username: string, password: string, registerToken?: string) {
-    return request<RegisterResponse>('/auth/register', {
+    return request<ApiResponse<RegisterData>>('/api/v2/auth/register', {
       method: 'POST',
       body: { username, password, register_token: registerToken },
     })
   },
 
   getConfig() {
-    return request<ConfigResponse>('/auth/config')
+    return request<ApiResponse<ConfigData>>('/api/v2/auth/config')
   },
 
+  // search
   searchBangumi(title: string, page?: number) {
-    return request<SearchBangumiResponse>('/api/v1/search/bangumi', {
-      method: 'POST',
-      body: { title, page },
-    })
+    const params = new URLSearchParams({ q: title })
+    if (page) params.set('page', String(page))
+    return request<ApiResponse<BangumiSearchItem[]>>(`/api/v2/search?${params}`)
   },
 
-  searchBangumiById(id: number) {
-    return request<IDSearchResponse>('/api/v1/search/bangumi/id', {
-      method: 'POST',
-      body: { id },
-    })
+  searchBangumiById(id: number, force?: boolean) {
+    const params = force ? `?force=true` : ''
+    return request<ApiResponse<BangumiItem>>(`/api/v2/bangumi/${id}${params}`)
   },
 
   searchLocal(keyword?: string, id?: number, page?: number, pageSize?: number) {
-    return request<LocalSearchResponse>('/api/v1/search/local', {
-      method: 'POST',
-      body: { keyword, id, page, page_size: pageSize },
-    })
+    const params = new URLSearchParams()
+    if (keyword) params.set('q', keyword)
+    if (id) params.set('id', String(id))
+    params.set('page', String(page || 1))
+    params.set('page_size', String(pageSize || 20))
+    return request<ApiResponse<LocalSearchResult>>(`/api/v2/search/local?${params}`)
   },
 
+  // records (RESTful resources)
   getDetailList() {
-    return request<DetailListResponse>('/api/v1/record/detail_list')
+    return request<ApiResponse<DetailListItem[]>>('/api/v2/records/detail')
   },
 
   addRecord(params: AddRecordParams) {
-    return request<AddRecordResponse>('/api/v1/record/add', {
+    return request<ApiResponse<AddRecordData>>('/api/v2/records', {
       method: 'POST',
       body: params,
     })
   },
 
-  getRecord(params: GetRecordParams) {
-    return request<GetRecorderResponse>('/api/v1/record/get', {
-      method: 'POST',
-      body: params,
-    })
+  getRecordByBangumi(id: number) {
+    return request<ApiResponse<GetRecordData>>(`/api/v2/records/bangumi/${id}`)
+  },
+
+  getRecordByCustom(id: number) {
+    return request<ApiResponse<GetRecordData>>(`/api/v2/records/custom/${id}`)
   },
 
   updateRecord(bangumi_id: number, recorder?: string, user_status?: number) {
-    return request<UpdateRecorderResponse>('/api/v1/record/update', {
-      method: 'POST',
-      body: { bangumi_id, recorder, user_status },
+    return request<ApiResponse<null>>(`/api/v2/records/bangumi/${bangumi_id}`, {
+      method: 'PATCH',
+      body: { recorder, user_status },
     })
   },
 
-  deleteRecord(params: DeleteRecordParams) {
-    return request<DeleteRecorderResponse>('/api/v1/record/delete', {
-      method: 'POST',
-      body: params,
+  deleteRecordByBangumi(id: number) {
+    return request<ApiResponse<null>>(`/api/v2/records/bangumi/${id}`, {
+      method: 'DELETE',
     })
   },
 
+  deleteRecordByCustom(id: number) {
+    return request<ApiResponse<null>>(`/api/v2/records/custom/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  deleteRecordById(id: number) {
+    return request<ApiResponse<null>>(`/api/v2/records/recording/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  // user (RESTful /me resource)
   regenerateToken() {
-    return request<TokenRegenerateResponse>('/api/v1/auth/token/regenerate', {
+    return request<ApiResponse<TokenData>>('/api/v2/me/token', {
       method: 'POST',
     })
   },
 
   getUserInfo() {
-    return request<UserInfo>('/api/v1/user/info')
+    return request<ApiResponse<UserInfo>>('/api/v2/me')
   },
 
   updateUserInfo(nickname?: string, avatar?: string) {
-    return request<UserResponse>('/api/v1/user/update', {
-      method: 'POST',
+    return request<ApiResponse<null>>('/api/v2/me', {
+      method: 'PATCH',
       body: { nickname, avatar },
     })
   },
 
   updatePassword(oldPassword: string, newPassword: string) {
-    return request<UserResponse>('/api/v1/user/password', {
-      method: 'POST',
+    return request<ApiResponse<null>>('/api/v2/me/password', {
+      method: 'PUT',
       body: { old_password: oldPassword, new_password: newPassword },
     })
   },

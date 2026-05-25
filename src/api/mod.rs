@@ -7,3 +7,4 @@ pub mod list;
 pub mod detail_list;
 pub mod delete_recorder;
 pub mod user;
+pub mod v2;

@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "UPDATE bangumi_info_detailed SET type = ?, author = ?, release_date = ?, episodes = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE bangumi_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "97b2af99cad7e6c7660be1c185caaab1493ea41fb87a9452ced6c5af7a6a4ff0"
+}

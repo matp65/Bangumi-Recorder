@@ -23,9 +23,11 @@ const loading = ref(false)
 
 onMounted(async () => {
   try {
-    const config = await auth.getConfig()
-    allowRegister.value = config.allow_register
-    registerNeedToken.value = config.register_need_token
+    const res = await auth.getConfig()
+    if (res.status === 0 && res.data) {
+      allowRegister.value = res.data.allow_register
+      registerNeedToken.value = res.data.register_need_token
+    }
   } catch (error) {
     console.error('Failed to fetch config:', error)
     allowRegister.value = true

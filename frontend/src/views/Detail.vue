@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { api, type BangumiItem, type GetRecorderResponse } from '../api'
+import { api, type BangumiItem, type GetRecordData } from '../api'
 import { Message, Modal } from '@arco-design/web-vue'
 import { IconArrowLeft, IconDelete } from '@arco-design/web-vue/es/icon'
 
@@ -9,7 +9,7 @@ const props = defineProps<{ bangumi_id: string }>()
 const router = useRouter()
 
 const info = ref<BangumiItem | null>(null)
-const recorder = ref<GetRecorderResponse | null>(null)
+const recorder = ref<GetRecordData | null>(null)
 const loading = ref(true)
 const updating = ref(false)
 const removing = ref(false)
@@ -46,28 +46,28 @@ async function fetchData() {
   try {
     const [infoRes, recordRes] = await Promise.all([
       api.searchBangumiById(parseInt(props.bangumi_id)),
-      api.getRecord({ bangumi_id: parseInt(props.bangumi_id) }),
+      api.getRecordByBangumi(parseInt(props.bangumi_id)),
     ])
     if (infoRes.status === 0 && infoRes.data) {
       info.value = infoRes.data
     }
-    if (recordRes.status === 0) {
-      recorder.value = recordRes
-      if (recordRes.is_delete) {
+    if (recordRes.status === 0 && recordRes.data) {
+      recorder.value = recordRes.data
+      if (recordRes.data.is_delete) {
         Message.warning('该追番记录已被删除')
         router.push('/')
         return
       }
-      if (recordRes.recorder) {
-        const parts = recordRes.recorder.split('|')
+      if (recordRes.data.recorder) {
+        const parts = recordRes.data.recorder.split('|')
         epInput.value = parseInt(parts[0]) || undefined
         timeInput.value = parts[1] || '00:00'
       } else {
         epInput.value = undefined
         timeInput.value = '00:00'
       }
-      if (recordRes.user_status !== undefined && recordRes.user_status !== null) {
-        userStatus.value = recordRes.user_status
+      if (recordRes.data.user_status !== undefined && recordRes.data.user_status !== null) {
+        userStatus.value = recordRes.data.user_status
       }
     }
   } catch {
@@ -94,10 +94,7 @@ async function handleUpdate() {
     const res = await api.updateRecord(parseInt(props.bangumi_id), recorderValue)
     if (res.status === 0) {
       Message.success('进度更新成功')
-      recorder.value = {
-        status: 0,
-        recorder: recorderValue,
-      }
+      recorder.value = { ...recorder.value, recorder: recorderValue } as GetRecordData
     } else {
       Message.error(res.message || '更新失败')
     }
@@ -126,7 +123,7 @@ async function handleDelete() {
     async onOk() {
       removing.value = true
       try {
-        const res = await api.deleteRecord({ bangumi_id: parseInt(props.bangumi_id) })
+        const res = await api.deleteRecordByBangumi(parseInt(props.bangumi_id))
         if (res.status === 0) {
           Message.success('删除成功')
           router.push('/')

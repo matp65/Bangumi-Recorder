@@ -96,9 +96,9 @@ async function doSearch() {
     if (useLocal.value) {
       const res = await api.searchLocal(keyword.value.trim(), undefined, currentPage.value, pageSize)
       if (res.status === 0 && res.data) {
-        results.value = res.data
-        totalResults.value = res.total || 0
-        if (res.data.length === 0) {
+        results.value = res.data.items
+        totalResults.value = res.data.total || 0
+        if (res.data.items.length === 0) {
           Message.info('本地缓存未找到相关条目')
         }
       } else {
@@ -151,9 +151,9 @@ async function handleIdSearch() {
   try {
     if (useLocal.value) {
       const res = await api.searchLocal(undefined, id, 1, pageSize)
-      if (res.status === 0 && res.data && res.data.length > 0) {
-        results.value = res.data
-        totalResults.value = res.total || 0
+      if (res.status === 0 && res.data && res.data.items.length > 0) {
+        results.value = res.data.items
+        totalResults.value = res.data.total || 0
       } else {
         Message.info('本地缓存未找到该 ID')
         results.value = []
@@ -195,30 +195,30 @@ async function handleAdd(item: BangumiSearchItem | LocalSearchItem) {
       const res = await api.addRecord({ bangumi_id: parseInt(item.bangumi_id), user_status: 2 })
       if (res.status === 0) {
         Message.success(`已添加「${item.title}」到追番列表`)
-      } else if (res.status === -3) {
+      } else if (res.message?.includes('already exists')) {
         Message.warning(`「${item.title}」已经在追番列表中`)
-      } else if (res.status === -2) {
+      } else if (res.message?.includes('not found')) {
         Message.error('番剧信息未找到，请先搜索ID获取详情后再添加')
       } else {
-        Message.error('添加失败')
+        Message.error(res.message || '添加失败')
       }
     } else if (item.other_id) {
       const res = await api.addRecord({ other_id: item.other_id, user_status: 2 })
       if (res.status === 0) {
         Message.success(`已添加「${item.title}」到追番列表`)
-      } else if (res.status === -3) {
+      } else if (res.message?.includes('already exists')) {
         Message.warning(`「${item.title}」已经在追番列表中`)
       } else {
-        Message.error('添加失败')
+        Message.error(res.message || '添加失败')
       }
     } else if (item.bangumi_id) {
       const res = await api.addRecord({ bangumi_id: parseInt(item.bangumi_id), user_status: 2 })
       if (res.status === 0) {
         Message.success(`已添加「${item.title}」到追番列表`)
-      } else if (res.status === -3) {
+      } else if (res.message?.includes('already exists')) {
         Message.warning(`「${item.title}」已经在追番列表中`)
       } else {
-        Message.error('添加失败')
+        Message.error(res.message || '添加失败')
       }
     }
   } catch {
@@ -247,10 +247,10 @@ async function handleAddCustom() {
     if (res.status === 0) {
       Message.success(`已添加「${customForm.value.title}」到追番列表`)
       customForm.value = { title: '', description: '', cover: '', maxNumber: undefined, status: 2, recorder: '' }
-    } else if (res.status === -3) {
+    } else if (res.message?.includes('already exists')) {
       Message.warning('该条目已在追番列表中')
     } else {
-      Message.error('添加失败')
+      Message.error(res.message || '添加失败')
     }
   } catch {
     Message.error('网络请求失败')

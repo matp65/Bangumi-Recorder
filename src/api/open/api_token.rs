@@ -1,3 +1,4 @@
+use axum::http::StatusCode;
 use sha2::{Digest, Sha256};
 use sqlx::mysql::MySqlPool;
 
@@ -15,4 +16,9 @@ pub async fn check_api_token(
         .ok()?
         .map(|row| row.id as i64);
     user_id
+}
+
+pub async fn require_api_token(pool: &MySqlPool, token: Option<&str>) -> Result<i64, StatusCode> {
+    let token = token.ok_or(StatusCode::UNAUTHORIZED)?;
+    check_api_token(pool, token).await.ok_or(StatusCode::UNAUTHORIZED)
 }

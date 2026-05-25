@@ -1,0 +1,824 @@
+openapi: "3.0.3"
+info:
+  title: Bangumi Recorder API
+  version: "2.0.0"
+  description: |
+    自托管的番剧追番记录器 API v2。
+
+    所有 v2 接口统一返回格式：
+    ```json
+    { "status": 0, "data": ..., "message": "" }
+    ```
+    - `status`: `0` 成功 / `-1` 报错
+    - `data`: 所有响应数据
+    - `message`: 错误描述（成功时为空）
+
+    错误时返回适当的 HTTP 状态码（400 / 404 / 409 / 401 / 500 等）。
+
+servers:
+  - url: ""
+    description: 与前端同源
+
+paths:
+  # ────────────────────────────── 公共 ──────────────────────────────
+  /api/v2/version:
+    get:
+      summary: 版本信息
+      tags: [公共]
+      responses:
+        "200":
+          description: 版本信息
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionInfo"
+
+  # ────────────────────────────── 认证 ──────────────────────────────
+  /api/v2/auth/login:
+    post:
+      summary: 登录
+      tags: [认证]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                password: { type: string }
+              required: [username, password]
+      responses:
+        "200":
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/LoginData"
+        "401":
+          description: 用户名或密码错误
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/v2/auth/register:
+    post:
+      summary: 注册
+      tags: [认证]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                password: { type: string }
+                register_token: { type: string, description: "注册令牌（如配置需要）" }
+              required: [username, password]
+      responses:
+        "200":
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/RegisterData"
+        "403":
+          description: 注册已关闭
+        "409":
+          description: 用户名已存在
+
+  /api/v2/auth/config:
+    get:
+      summary: 获取注册配置
+      tags: [认证]
+      responses:
+        "200":
+          description: 配置信息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/ConfigData"
+
+  # ────────────────────────────── 用户 ──────────────────────────────
+  /api/v2/me:
+    get:
+      summary: 获取当前用户信息
+      tags: [用户]
+      security: [{ BearerJWT: [] }]
+      responses:
+        "200":
+          description: 用户信息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/UserInfo"
+    patch:
+      summary: 更新用户资料
+      tags: [用户]
+      security: [{ BearerJWT: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nickname: { type: string }
+                avatar: { type: string }
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiOk"
+
+  /api/v2/me/password:
+    put:
+      summary: 修改密码
+      tags: [用户]
+      security: [{ BearerJWT: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                old_password: { type: string }
+                new_password: { type: string, minLength: 6 }
+              required: [old_password, new_password]
+      responses:
+        "200":
+          description: 密码修改成功（之后需重新登录）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiOk"
+        "400":
+          description: 原密码错误等
+
+  /api/v2/me/token:
+    post:
+      summary: 重新生成 API Token
+      tags: [用户]
+      security: [{ BearerJWT: [] }]
+      responses:
+        "200":
+          description: 新生成的 Token
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/TokenData"
+
+  # ────────────────────────────── 搜索 ──────────────────────────────
+  /api/v2/search:
+    get:
+      summary: 在线搜索 Bangumi 条目
+      description: 搜索 bgm.tv，结果同时存入本地缓存。
+      tags: [搜索]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+          description: 搜索关键词
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+      responses:
+        "200":
+          description: 搜索结果列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/BangumiSearchItem"
+        "400":
+          description: 缺少搜索关键词
+
+  /api/v2/bangumi/{id}:
+    get:
+      summary: 获取 Bangumi 条目详情
+      description: |
+        优先返回本地缓存（24h 内），缓存过期或 `?force=true` 时从 bgm.tv 抓取。
+      tags: [搜索]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Bangumi 外部 ID
+        - name: force
+          in: query
+          schema: { type: boolean, default: false }
+          description: 强制刷新缓存
+      responses:
+        "200":
+          description: 条目详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/BangumiItem"
+        "404":
+          description: 条目未找到
+
+  /api/v2/search/local:
+    get:
+      summary: 搜索本地缓存
+      tags: [搜索]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: 关键词
+        - name: id
+          in: query
+          schema: { type: integer }
+          description: 按 ID 精确搜索
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        "200":
+          description: 本地搜索结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/LocalSearchResult"
+
+  # ────────────────────────────── 追番记录 ──────────────────────────────
+  /api/v2/records:
+    get:
+      summary: 列出所有追番记录
+      tags: [追番记录]
+      security: [{ BearerJWT: [] }]
+      responses:
+        "200":
+          description: 追番列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/RecorderItem"
+    post:
+      summary: 添加追番记录
+      tags: [追番记录]
+      security: [{ BearerJWT: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddRecordParams"
+      responses:
+        "200":
+          description: 添加成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/AddRecordData"
+        "400":
+          description: 参数无效
+        "404":
+          description: Bangumi 未找到
+        "409":
+          description: 记录已存在
+
+  /api/v2/records/detail:
+    get:
+      summary: 列出所有追番记录（含详细条目信息）
+      tags: [追番记录]
+      security: [{ BearerJWT: [] }]
+      responses:
+        "200":
+          description: 详细追番列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/DetailListItem"
+
+  /api/v2/records/bangumi/{id}:
+    get:
+      summary: 按 Bangumi ID 获取追番进度
+      tags: [追番记录]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: 追番进度
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/GetRecordData"
+    patch:
+      summary: 按 Bangumi ID 更新追番进度
+      tags: [追番记录]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recorder: { type: string, description: "进度，格式 集数|分钟:秒" }
+                user_status:
+                  type: integer
+                  enum: [0, 1, 2, 3, 4]
+                  description: "0=想看 1=在看 2=看过 3=搁置 4=抛弃"
+      responses:
+        "200": { description: 更新成功, content: { application/json: { schema: { $ref: "#/components/schemas/ApiOk" } } } }
+        "400": { description: 参数缺失 }
+        "404": { description: 记录未找到 }
+    delete:
+      summary: 按 Bangumi ID 删除追番记录
+      tags: [追番记录]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: 删除成功, content: { application/json: { schema: { $ref: "#/components/schemas/ApiOk" } } } }
+        "404": { description: 记录未找到 }
+
+  /api/v2/records/custom/{id}:
+    get:
+      summary: 按自定义条目 ID 获取追番进度
+      tags: [追番记录]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: 追番进度
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/GetRecordData"
+    delete:
+      summary: 按自定义条目 ID 删除追番记录
+      tags: [追番记录]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: 删除成功, content: { application/json: { schema: { $ref: "#/components/schemas/ApiOk" } } } }
+        "404": { description: 记录未找到 }
+
+  /api/v2/records/recording/{id}:
+    delete:
+      summary: 按记录 ID（recording_id）删除追番记录
+      tags: [追番记录]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          description: recordings 表的自增 ID
+      responses:
+        "200": { description: 删除成功, content: { application/json: { schema: { $ref: "#/components/schemas/ApiOk" } } } }
+        "404": { description: 记录未找到 }
+
+  # ────────────────────────────── 开放接口（API Token）──────────────────────────────
+  /api/v2/open/search:
+    get:
+      summary: 在线搜索（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+      responses:
+        "200":
+          description: 搜索结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/v2/open/bangumi/{id}:
+    get:
+      summary: 获取条目详情（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: force
+          in: query
+          schema: { type: boolean }
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 条目详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/v2/open/records:
+    get:
+      summary: 列出追番记录（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 追番列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    post:
+      summary: 添加追番记录（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddRecordParams"
+      responses:
+        "200":
+          description: 添加成功
+
+  /api/v2/open/records/bangumi/{id}:
+    get:
+      summary: 获取进度（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 追番进度
+    patch:
+      summary: 更新进度（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recorder: { type: string }
+                user_status: { type: integer }
+      responses:
+        "200": { description: 更新成功 }
+    delete:
+      summary: 删除记录（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 删除成功 }
+
+  /api/v2/open/me:
+    get:
+      summary: 用户信息（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 用户信息
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+components:
+  securitySchemes:
+    BearerJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 在 /api/v2/auth/login 获取 Token，以 `Bearer <token>` 形式传入 Authorization 头。
+
+  schemas:
+    # ── 统一响应 ──
+    ApiResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+          enum: [0, -1]
+          description: "0=成功, -1=报错"
+        data: {}
+        message:
+          type: string
+          nullable: true
+
+    ApiOk:
+      type: object
+      properties:
+        status: { type: integer, enum: [0] }
+        data: { nullable: true, default: null }
+        message: { type: string, nullable: true }
+
+    ApiError:
+      type: object
+      properties:
+        status: { type: integer, enum: [-1] }
+        data: { nullable: true, default: null }
+        message: { type: string }
+
+    # ── 认证 ──
+    LoginData:
+      type: object
+      properties:
+        token: { type: string }
+      required: [token]
+
+    RegisterData:
+      type: object
+      properties:
+        token: { type: string }
+        api_token: { type: string }
+      required: [token, api_token]
+
+    ConfigData:
+      type: object
+      properties:
+        allow_register: { type: boolean }
+        register_need_token: { type: boolean }
+      required: [allow_register, register_need_token]
+
+    # ── 用户 ──
+    UserInfo:
+      type: object
+      properties:
+        id: { type: integer }
+        username: { type: string }
+        nickname: { type: string }
+        email: { type: string }
+        avatar: { type: string }
+        status: { type: integer, description: "账号状态" }
+        reg_time: { type: string, nullable: true, format: date }
+      required: [id, username, nickname, email, avatar, status]
+
+    TokenData:
+      type: object
+      properties:
+        api_token: { type: string }
+      required: [api_token]
+
+    # ── 搜索 ──
+    BangumiSearchItem:
+      type: object
+      properties:
+        bangumi_id: { type: string }
+        title: { type: string }
+        alias: { type: string }
+        cover: { type: string }
+        info: { type: string }
+        type: { type: integer }
+      required: [bangumi_id, title, alias, cover, info, type]
+
+    BangumiItem:
+      type: object
+      properties:
+        bangumi_id: { type: string }
+        title: { type: string }
+        cover_url: { type: string }
+        type: { type: integer }
+        author: { type: string }
+        release_date: { type: string, nullable: true, format: date }
+        episodes: { type: integer }
+        description: { type: string }
+      required: [bangumi_id, title, cover_url, type, author, episodes, description]
+
+    LocalSearchResult:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LocalSearchItem"
+        total: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
+      required: [items, total, page, page_size]
+
+    LocalSearchItem:
+      type: object
+      properties:
+        bangumi_id: { type: string, nullable: true }
+        other_id: { type: integer, nullable: true }
+        title: { type: string }
+        cover: { type: string, nullable: true }
+        info: { type: string, nullable: true }
+        type: { type: string, nullable: true }
+      required: [title]
+
+    # ── 追番记录 ──
+    RecorderItem:
+      type: object
+      properties:
+        id: { type: integer }
+        local_bangumi_id: { type: integer, nullable: true }
+        bangumi_id: { type: string, nullable: true }
+        recorder: { type: string, nullable: true }
+        user_status: { type: integer, nullable: true }
+        is_delete: { type: boolean }
+        date: { type: string, format: date }
+      required: [id, is_delete, date]
+
+    DetailListItem:
+      type: object
+      properties:
+        id: { type: integer }
+        local_bangumi_id: { type: integer, nullable: true }
+        other_id: { type: integer, nullable: true }
+        local_other_id: { type: integer, nullable: true }
+        bangumi_id: { type: string, nullable: true }
+        title: { type: string, nullable: true }
+        type: { type: integer, nullable: true }
+        author: { type: string, nullable: true }
+        episodes: { type: integer, nullable: true }
+        cover_url: { type: string, nullable: true }
+        recorder: { type: string, nullable: true }
+        user_status: { type: integer, nullable: true }
+        is_delete: { type: boolean }
+        updated_at: { type: string, format: date }
+        created_at: { type: string, format: date }
+      required: [id, is_delete, updated_at, created_at]
+
+    AddRecordData:
+      type: object
+      properties:
+        local_bangumi_id: { type: integer, nullable: true }
+        other_id: { type: integer, nullable: true }
+        local_other_id: { type: integer, nullable: true }
+        bangumi_id: { type: integer, nullable: true }
+        recorder: { type: string, nullable: true }
+        date: { type: string, nullable: true, format: date }
+
+    GetRecordData:
+      type: object
+      properties:
+        local_bangumi_id: { type: integer, nullable: true }
+        other_id: { type: integer, nullable: true }
+        local_other_id: { type: integer, nullable: true }
+        bangumi_id: { type: integer, nullable: true }
+        recorder: { type: string, nullable: true }
+        user_status: { type: integer, nullable: true }
+        is_delete: { type: boolean, nullable: true }
+        date: { type: string, nullable: true, format: date }
+
+    AddRecordParams:
+      type: object
+      properties:
+        bangumi_id: { type: integer, description: "Bangumi 外部 ID" }
+        other_id: { type: integer, description: "自定义条目 ID" }
+        other_title: { type: string }
+        other_description: { type: string }
+        other_cover: { type: string }
+        other_max_number: { type: integer }
+        other_status:
+          type: integer
+          enum: [0, 1, 2, 3, 4]
+        user_status:
+          type: integer
+          enum: [0, 1, 2, 3, 4]
+        recorder:
+          type: string
+          description: "进度 集数|分钟:秒"
+      oneOf:
+        - required: [bangumi_id]
+        - required: [other_id]
+
+    # ── 版本 ──
+    VersionInfo:
+      type: object
+      properties:
+        version: { type: string, example: "1.0.2" }
+        rustc: { type: string, example: "rustc 1.93.0 (254b59607 2026-01-19)" }
+        git: { type: string, example: "74d103a" }
+      required: [version, rustc, git]

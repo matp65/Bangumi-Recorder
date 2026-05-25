@@ -22,11 +22,11 @@ const changingPassword = ref(false)
 onMounted(async () => {
   loadingInfo.value = true
   try {
-    const info = await api.getUserInfo()
-    if (info.id) {
-      userInfo.value = info
-      editNickname.value = info.nickname || ''
-      editAvatar.value = info.avatar || ''
+    const res = await api.getUserInfo()
+    if (res.status === 0 && res.data?.id) {
+      userInfo.value = res.data
+      editNickname.value = res.data.nickname || ''
+      editAvatar.value = res.data.avatar || ''
     }
   } catch {
     Message.error('获取用户信息失败')
@@ -91,8 +91,8 @@ async function handleRegenerate() {
   loadingToken.value = true
   try {
     const res = await api.regenerateToken()
-    if (res.status === 0 && res.api_token) {
-      apiToken.value = res.api_token
+    if (res.status === 0 && res.data?.api_token) {
+      apiToken.value = res.data.api_token
       Message.success('API Token 已重新生成')
     } else {
       Message.error(res.message || '生成失败')
