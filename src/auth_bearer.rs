@@ -340,14 +340,17 @@ pub async fn register(
         }
     };
 
+    let user_uuid = uuid::Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext)).to_string();
+
     let raw_api_token = uuid::Uuid::new_v4().to_string();
     let api_token_hash = hash_api_token(&raw_api_token);
 
     let insert_result = sqlx::query!(
-        "INSERT INTO users (username, password_hash, api_token_hash) VALUES (?, ?, ?)",
+        "INSERT INTO users (username, password_hash, api_token_hash, uuid) VALUES (?, ?, ?, ?)",
         username,
         password_hash,
-        api_token_hash
+        api_token_hash,
+        user_uuid
     )
     .execute(&pool)
     .await;

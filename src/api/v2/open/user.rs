@@ -22,7 +22,7 @@ pub async fn get_info(
 
     let user_info = sqlx::query_as!(
         UserInfo,
-        "SELECT id, username, nickname, email, avatar, status, DATE(created_at) AS reg_time FROM users WHERE id = ?",
+        "SELECT id, uuid, username, nickname, email, avatar, status, DATE(created_at) AS reg_time FROM users WHERE id = ?",
         user_id
     )
     .fetch_one(&pool)
@@ -32,6 +32,7 @@ pub async fn get_info(
         Ok(info) => (StatusCode::OK, success(info).1),
         Err(_) => success(UserInfo {
             id: 0,
+            uuid: String::new(),
             username: String::new(),
             nickname: String::new(),
             email: String::new(),

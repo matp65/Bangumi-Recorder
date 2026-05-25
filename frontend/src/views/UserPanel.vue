@@ -139,6 +139,7 @@ async function handleCopy() {
           </div>
           <div>
             <div style="font-weight: 600; font-size: 16px; color: #1d2129">{{ auth.username }}</div>
+            <div v-if="userInfo?.uuid" style="font-size: 12px; color: #86909c; font-family: monospace">UUID: {{ userInfo.uuid }}</div>
             <div v-if="userInfo?.reg_time" style="font-size: 12px; color: #86909c">注册于 {{ userInfo.reg_time }}</div>
           </div>
         </div>

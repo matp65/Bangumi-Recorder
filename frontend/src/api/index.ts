@@ -134,6 +134,7 @@ export interface TokenData {
 
 export interface UserInfo {
   id: number
+  uuid: string
   username: string
   nickname: string
   email: string

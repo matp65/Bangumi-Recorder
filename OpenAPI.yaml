@@ -675,13 +675,14 @@ components:
       type: object
       properties:
         id: { type: integer }
+        uuid: { type: string }
         username: { type: string }
         nickname: { type: string }
         email: { type: string }
         avatar: { type: string }
         status: { type: integer, description: "账号状态" }
         reg_time: { type: string, nullable: true, format: date }
-      required: [id, username, nickname, email, avatar, status]
+      required: [id, uuid, username, nickname, email, avatar, status]
 
     TokenData:
       type: object

@@ -319,6 +319,7 @@ API Token 在注册时返回一次，也可通过 `/api/v1/auth/token/regenerate
 ```json
 {
   "id": 1,
+  "uuid": "7047965d-036b-4b1d-a877-7f5ced0147e4",
   "username": "user",
   "nickname": "小明",
   "email": "user@example.com",
@@ -331,6 +332,7 @@ API Token 在注册时返回一次，也可通过 `/api/v1/auth/token/regenerate
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | number | 用户 ID |
+| uuid | string | 用户 UUID（v7） |
 | username | string | 用户名 |
 | nickname | string | 昵称（可编辑） |
 | email | string | 邮箱（只读，注册时填入） |
@@ -873,6 +875,7 @@ GET /api/v1/open/user/info?token=<api_token>
 ```json
 {
   "id": 1,
+  "uuid": "7047965d-036b-4b1d-a877-7f5ced0147e4",
   "username": "user",
   "nickname": "小明",
   "email": "user@example.com",
@@ -885,6 +888,7 @@ GET /api/v1/open/user/info?token=<api_token>
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | number | 用户 ID |
+| uuid | string | 用户 UUID（v7） |
 | username | string | 用户名 |
 | nickname | string | 昵称 |
 | email | string | 邮箱 |

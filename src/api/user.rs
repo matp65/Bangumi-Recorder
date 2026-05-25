@@ -10,6 +10,7 @@ use crate::auth_bearer::{verify_password, hash_password, AuthUser};
 #[derive(Debug, Serialize)]
 pub struct UserInfo {
     pub id: i64,
+    pub uuid: String,
     pub username: String,
     pub nickname: String,
     pub email: String,
@@ -44,7 +45,7 @@ pub async fn get_info(
 
     let user_info = sqlx::query_as!(
         UserInfo,
-        "SELECT id, username, nickname, email, avatar, status, DATE(created_at) AS reg_time FROM users WHERE id = ?",
+        "SELECT id, uuid, username, nickname, email, avatar, status, DATE(created_at) AS reg_time FROM users WHERE id = ?",
         user_id
     )
     .fetch_one(&pool)
@@ -54,6 +55,7 @@ pub async fn get_info(
         Ok(info) => Json(info),
         Err(_) => Json(UserInfo {
             id: 0,
+            uuid: String::new(),
             username: String::new(),
             nickname: String::new(),
             email: String::new(),
