@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, type DetailListItem } from '../api'
 import { Message, Modal } from '@arco-design/web-vue'
@@ -9,6 +9,21 @@ import dayjs from 'dayjs'
 const router = useRouter()
 const loading = ref(true)
 const records = ref<DetailListItem[]>([])
+const filterStatus = ref<number>(-1)
+
+const filterOptions = [
+  { label: '全部', value: -1 },
+  { label: '想看', value: 0 },
+  { label: '在看', value: 1 },
+  { label: '看过', value: 2 },
+  { label: '搁置', value: 3 },
+  { label: '抛弃', value: 4 },
+]
+
+const filteredRecords = computed(() => {
+  if (filterStatus.value === -1) return records.value
+  return records.value.filter(r => r.user_status === filterStatus.value)
+})
 
 const typeLabels: Record<number, string> = {
   1: 'TV',
@@ -134,16 +149,32 @@ onMounted(fetchRecords)
   <div>
     <div style="margin-bottom: 24px">
       <h2 style="font-size: 20px; color: #1d2129; margin: 0">我的追番</h2>
-      <p style="color: #86909c; font-size: 14px; margin-top: 4px">共 {{ records.length }} 部</p>
+      <p style="color: #86909c; font-size: 14px; margin-top: 4px">共 {{ filteredRecords.length }} 部</p>
+    </div>
+
+    <div style="margin-bottom: 20px">
+      <a-radio-group
+        type="button"
+        :model-value="filterStatus"
+        @change="(val: any) => filterStatus = val as number"
+      >
+        <a-radio
+          v-for="opt in filterOptions"
+          :key="opt.value"
+          :value="opt.value"
+        >
+          {{ opt.label }}
+        </a-radio>
+      </a-radio-group>
     </div>
 
     <a-spin :loading="loading" style="min-height: 200px">
-      <div v-if="records.length === 0" style="text-align: center; padding: 80px 0">
-        <a-empty description="还没有追番记录，去搜索添加吧" />
+      <div v-if="filteredRecords.length === 0" style="text-align: center; padding: 80px 0">
+        <a-empty :description="filterStatus !== -1 ? '没有符合条件的追番记录' : '还没有追番记录，去搜索添加吧'" />
       </div>
       <div class="card-grid" v-else>
         <a-card
-          v-for="item in records"
+          v-for="item in filteredRecords"
           :key="item.id"
           hoverable
           class="bangumi-card"
