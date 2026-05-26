@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use sqlx::mysql::MySqlPool;
 
-use chrono::NaiveDate;
+use chrono::NaiveDateTime;
 
 use crate::auth_bearer::AuthUser;
 
@@ -23,7 +23,8 @@ pub struct RecorderItem {
     pub recorder: Option<String>,
     pub user_status: Option<i8>,
     pub is_delete: bool,
-    pub date: NaiveDate
+    pub updated_at: NaiveDateTime,
+    pub date: NaiveDateTime,
 }
 
 pub async fn list_recorder(
@@ -62,7 +63,8 @@ pub async fn list_recorder(
                     recorder: r.recorder,
                     user_status: Some(r.status),
                     is_delete: r.is_delete != 0,
-                    date: r.updated_at.date(),
+                    updated_at: r.updated_at,
+                    date: r.updated_at,
                 });
             }
         }
@@ -101,7 +103,8 @@ pub async fn list_recorder(
                     recorder: r.recorder,
                     user_status: Some(r.status),
                     is_delete: r.is_delete != 0,
-                    date: r.updated_at.date(),
+                    updated_at: r.updated_at,
+                    date: r.updated_at,
                 });
             }
         }

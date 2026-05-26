@@ -1,0 +1,24 @@
+{
+  "db_name": "MySQL",
+  "query": "\n        SELECT MAX(progress_seconds) FROM episode_records\n        WHERE recording_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "MAX(progress_seconds)",
+        "type_info": {
+          "type": "Long",
+          "flags": "BINARY",
+          "max_size": 11
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "035d92a7e4e914d2f3a683b22d94922daa2183e4d7c7cb0cac95b69d58892cea"
+}

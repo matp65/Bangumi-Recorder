@@ -1,0 +1,24 @@
+{
+  "db_name": "MySQL",
+  "query": "\n        SELECT r.id\n        FROM recordings r\n        JOIN bangumi_info_easy b ON r.bangumi_id = b.id\n        WHERE b.external_id = ? AND r.user_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": {
+          "type": "Long",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | AUTO_INCREMENT",
+          "max_size": 10
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "875d1089511df520e94bb93efaf9b795e4a961570913c9f7cf94c99709aac789"
+}

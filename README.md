@@ -183,6 +183,23 @@ cargo build --release
 | DELETE | `/api/v2/records/custom/:id` | 按自定义条目 ID 删除 |
 | DELETE | `/api/v2/records/recording/:id` | 按记录 ID 删除 |
 
+#### 单集追踪（Bearer Token）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v2/bangumi/:id/episodes` | 获取剧集元数据列表（爬取 bgm.tv 并缓存） |
+| GET | `/api/v2/records/bangumi/:id/episodes` | 获取单集追踪状态（含元数据合并） |
+| PATCH | `/api/v2/records/bangumi/:id/episodes/:ordinal` | 更新单集进度 `{"watched","progress_seconds","duration_seconds"}` |
+
+更新单集时会自动同步主表 `recorder` 字段：集数 = max(ordinal where watched=1)，时间 = max(progress_seconds) 格式化为 mm:ss。
+
+#### 同步
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/v2/sync` | 批量同步（一轮往返，更新仲裁按较新时间戳胜出） |
+| GET | `/api/v2/sync/incremental?since=` | 增量同步（返回指定时间戳后变更的记录） |
+
 #### 开放接口（API Token 鉴权，`?token=xxx`）
 
 每个 Token 拥有独立的权限组合，不满足权限时返回 `403 Forbidden`。

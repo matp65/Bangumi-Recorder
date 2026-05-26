@@ -5,7 +5,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
-use chrono::NaiveDate;
+use chrono::NaiveDateTime;
 
 use crate::auth_bearer::AuthUser;
 use crate::api::new::AddRecordQuery;
@@ -27,7 +27,7 @@ pub struct AddRecordData {
     pub local_other_id: Option<u32>,
     pub bangumi_id: Option<u32>,
     pub recorder: Option<String>,
-    pub date: Option<NaiveDate>,
+    pub date: Option<NaiveDateTime>,
 }
 
 #[derive(Serialize)]
@@ -39,7 +39,7 @@ pub struct GetRecordData {
     pub recorder: Option<String>,
     pub user_status: Option<i8>,
     pub is_delete: Option<bool>,
-    pub date: Option<NaiveDate>,
+    pub date: Option<NaiveDateTime>,
 }
 
 pub async fn add_record(
@@ -56,7 +56,7 @@ pub async fn add_record(
             local_other_id: inner.local_other_id,
             bangumi_id: inner.bangumi_id,
             recorder: inner.recorder,
-            date: inner.date,
+            date: inner.date.map(|d| d.and_hms_opt(0, 0, 0).unwrap()),
         }),
         -1 => bad_request("Missing or invalid parameters"),
         -2 => not_found("Bangumi not found"),
@@ -123,7 +123,7 @@ pub async fn get_recorder(
             recorder: inner.recorder,
             user_status: inner.user_status,
             is_delete: inner.is_delete,
-            date: inner.date,
+            date: inner.date.map(|d| d.and_hms_opt(0, 0, 0).unwrap()),
         })
     } else {
         not_found("Record not found")

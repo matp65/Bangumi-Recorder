@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "UPDATE recordings SET recorder = ?, status = ?, updated_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "cd679ae2fe1329f168761f099b6ca6a665598fee0b7b33c46f26a5503942a345"
+}

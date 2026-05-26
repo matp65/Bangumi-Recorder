@@ -367,6 +367,31 @@ paths:
         "404":
           description: 条目未找到
 
+  /api/v2/bangumi/{id}/episodes:
+    get:
+      summary: 获取剧集元数据列表（爬取 bgm.tv 并缓存）
+      tags: [搜索]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Bangumi 外部 ID
+      responses:
+        "200":
+          description: 剧集元数据列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/BangumiEpisodeMeta"
+
   /api/v2/search/local:
     get:
       summary: 搜索本地缓存
@@ -573,6 +598,133 @@ paths:
         "200": { description: 删除成功, content: { application/json: { schema: { $ref: "#/components/schemas/ApiOk" } } } }
         "404": { description: 记录未找到 }
 
+  # ────────────────────────────── 单集追踪 ──────────────────────────────
+  /api/v2/records/bangumi/{id}/episodes:
+    get:
+      summary: 获取单集追踪列表（含元数据）
+      tags: [单集追踪]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Bangumi 外部 ID
+      responses:
+        "200":
+          description: 单集列表，每集包含元数据和用户进度
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/EpisodeItem"
+
+  /api/v2/records/bangumi/{id}/episodes/{ordinal}:
+    patch:
+      summary: 更新单集进度
+      tags: [单集追踪]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Bangumi 外部 ID
+        - name: ordinal
+          in: path
+          required: true
+          schema: { type: integer }
+          description: 集号（1-based）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                watched: { type: boolean, description: "标记为已看完" }
+                progress_seconds: { type: integer, description: "播放进度（秒）" }
+                duration_seconds: { type: integer, description: "单集总时长（秒），Animeko 退出时提交" }
+      responses:
+        "200":
+          description: 更新后的单集进度
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/EpisodeItem"
+        "404":
+          description: 记录未找到
+
+  # ────────────────────────────── 同步 ──────────────────────────────
+  /api/v2/sync:
+    post:
+      summary: 批量同步追番记录（一轮往返）
+      description: |
+        客户端提交完整列表，服务端返回权威状态。
+        冲突仲裁规则：`updated_at` 较新的一方获胜。
+        服务端会自动合并 episode_records 的进度到主表 recorder 字段。
+      tags: [同步]
+      security: [{ BearerJWT: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                records:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/SyncRequestRecord"
+              required: [records]
+      responses:
+        "200":
+          description: 服务端权威状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/SyncResponseData"
+
+  /api/v2/sync/incremental:
+    get:
+      summary: 增量同步（获取自指定时间以来变更的记录）
+      tags: [同步]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: since
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+          description: 起始时间戳（ISO 8601），只返回之后变更的记录
+      responses:
+        "200":
+          description: 变更记录列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/SyncResponseRecord"
+        "400":
+          description: 缺少 since 参数
+
   # ────────────────────────────── 开放接口（API Token，支持权限控制）────────────────
   # 每个 Token 拥有独立权限组合，不满足所需权限时返回 403 Forbidden。
   # 权限说明见 /api/v2/tokens/permissions
@@ -727,6 +879,138 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiResponse"
 
+  # ────────────────────────────── 开放接口：剧集元数据 ────────────────
+  /api/v2/open/bangumi/{id}/episodes:
+    get:
+      summary: 获取剧集元数据列表（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 剧集元数据
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ────────────────────────────── 开放接口：单集追踪 ──────────────────
+  /api/v2/open/episodes/{bangumi_id}:
+    get:
+      summary: 获取单集追踪列表（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: bangumi_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 单集列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/v2/open/episodes/{bangumi_id}/{ordinal}:
+    patch:
+      summary: 更新单集进度（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: bangumi_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: ordinal
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                watched: { type: boolean }
+                progress_seconds: { type: integer }
+                duration_seconds: { type: integer }
+      responses:
+        "200":
+          description: 更新后的单集
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ────────────────────────────── 开放接口：同步 ──────────────────────
+  /api/v2/open/sync:
+    post:
+      summary: 批量同步（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                records:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/SyncRequestRecord"
+              required: [records]
+      responses:
+        "200":
+          description: 同步结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/v2/open/sync/incremental:
+    get:
+      summary: 增量同步（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: since
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 变更记录
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "400":
+          description: 缺少参数
+
 components:
   securitySchemes:
     BearerJWT:
@@ -862,8 +1146,9 @@ components:
         recorder: { type: string, nullable: true }
         user_status: { type: integer, nullable: true }
         is_delete: { type: boolean }
-        date: { type: string, format: date }
-      required: [id, is_delete, date]
+        updated_at: { type: string, format: date-time, description: "秒精度更新时间" }
+        date: { type: string, format: date, description: "已弃用，保留兼容" }
+      required: [id, is_delete, updated_at, date]
 
     DetailListItem:
       type: object
@@ -876,14 +1161,72 @@ components:
         title: { type: string, nullable: true }
         type: { type: integer, nullable: true }
         author: { type: string, nullable: true }
-        episodes: { type: integer, nullable: true }
+        episodes: { type: integer, description: "已观看集数，0 表示无数据" }
         cover_url: { type: string, nullable: true }
         recorder: { type: string, nullable: true }
         user_status: { type: integer, nullable: true }
         is_delete: { type: boolean }
-        updated_at: { type: string, format: date }
-        created_at: { type: string, format: date }
+        updated_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
       required: [id, is_delete, updated_at, created_at]
+
+    # ── 单集追踪 ──
+    EpisodeItem:
+      type: object
+      properties:
+        ordinal: { type: integer, description: "集号（1-based）" }
+        title: { type: string, nullable: true, description: "日文标题" }
+        name_cn: { type: string, nullable: true, description: "中文标题" }
+        airdate: { type: string, nullable: true, format: date, description: "首播日期" }
+        duration: { type: string, nullable: true, description: "时长描述（如 24m）" }
+        watched: { type: boolean, description: "是否已看完" }
+        progress_seconds: { type: integer, nullable: true, description: "播放进度（秒）" }
+        duration_seconds: { type: integer, nullable: true, description: "单集时长（秒）" }
+        completed_at: { type: string, nullable: true, format: date-time, description: "看完时间" }
+        updated_at: { type: string, nullable: true, format: date-time, description: "进度更新时间" }
+      required: [ordinal, watched]
+
+    BangumiEpisodeMeta:
+      type: object
+      properties:
+        ordinal: { type: integer, description: "集号" }
+        title: { type: string, nullable: true }
+        name_cn: { type: string, nullable: true }
+        airdate: { type: string, nullable: true, format: date }
+        duration: { type: string, nullable: true }
+      required: [ordinal]
+
+    # ── 同步 ──
+    SyncRequestRecord:
+      type: object
+      properties:
+        bangumi_id: { type: string, description: "Bangumi 外部 ID" }
+        recorder: { type: string, nullable: true, description: "进度 集数|分钟:秒" }
+        user_status: { type: integer, nullable: true, enum: [0,1,2,3,4] }
+        updated_at: { type: string, nullable: true, format: date-time, description: "客户端时间戳，用于冲突仲裁" }
+      required: [bangumi_id]
+
+    SyncResponseRecord:
+      type: object
+      properties:
+        bangumi_id: { type: string }
+        recorder: { type: string, nullable: true }
+        user_status: { type: integer, nullable: true }
+        updated_at: { type: string, format: date-time }
+      required: [bangumi_id, updated_at]
+
+    SyncResponseData:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncResponseRecord"
+        deleted:
+          type: array
+          items: { type: string }
+          description: "已在服务端删除的 bangumi_id 列表"
+      required: [records, deleted]
 
     AddRecordData:
       type: object

@@ -87,13 +87,64 @@ export interface DetailListItem {
   title: string | null
   type: number | null
   author: string | null
-  episodes: number | null
+  episodes: number
   cover_url: string | null
   recorder: string | null
   user_status?: number
   is_delete: boolean
   updated_at: string
   created_at: string
+}
+
+export interface RecorderItem {
+  id: number
+  local_bangumi_id: number | null
+  bangumi_id: string | null
+  recorder: string | null
+  user_status: number | null
+  is_delete: boolean
+  updated_at: string
+  date: string
+}
+
+export interface EpisodeItem {
+  ordinal: number
+  title: string | null
+  name_cn: string | null
+  airdate: string | null
+  duration: string | null
+  watched: boolean
+  progress_seconds: number | null
+  duration_seconds: number | null
+  completed_at: string | null
+  updated_at: string | null
+}
+
+export interface BangumiEpisodeMeta {
+  ordinal: number
+  title: string | null
+  name_cn: string | null
+  airdate: string | null
+  duration: string | null
+}
+
+export interface SyncRequestRecord {
+  bangumi_id: string
+  recorder?: string | null
+  user_status?: number | null
+  updated_at?: string | null
+}
+
+export interface SyncResponseRecord {
+  bangumi_id: string
+  recorder: string | null
+  user_status: number | null
+  updated_at: string
+}
+
+export interface SyncResponseData {
+  records: SyncResponseRecord[]
+  deleted: string[]
 }
 
 export interface AddRecordData {
@@ -327,5 +378,34 @@ export const api = {
 
   getPermissionLabels() {
     return request<ApiResponse<PermissionLabelsResponse>>('/api/v2/tokens/permissions')
+  },
+
+  // Episode metadata
+  getBangumiEpisodes(id: number) {
+    return request<ApiResponse<BangumiEpisodeMeta[]>>(`/api/v2/bangumi/${id}/episodes`)
+  },
+
+  // Per-user episode tracking (JWT)
+  listEpisodes(bangumiId: number) {
+    return request<ApiResponse<EpisodeItem[]>>(`/api/v2/records/bangumi/${bangumiId}/episodes`)
+  },
+
+  updateEpisode(bangumiId: number, ordinal: number, data: { watched?: boolean; progress_seconds?: number; duration_seconds?: number }) {
+    return request<ApiResponse<EpisodeItem>>(`/api/v2/records/bangumi/${bangumiId}/episodes/${ordinal}`, {
+      method: 'PATCH',
+      body: data,
+    })
+  },
+
+  // Sync
+  syncRecords(records: SyncRequestRecord[]) {
+    return request<ApiResponse<SyncResponseData>>('/api/v2/sync', {
+      method: 'POST',
+      body: { records },
+    })
+  },
+
+  incrementalSync(since: string) {
+    return request<ApiResponse<SyncResponseRecord[]>>(`/api/v2/sync/incremental?since=${encodeURIComponent(since)}`)
   },
 }

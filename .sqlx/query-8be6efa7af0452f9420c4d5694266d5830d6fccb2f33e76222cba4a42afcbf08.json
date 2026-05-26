@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "\n        INSERT INTO episode_records (recording_id, ordinal, watched, progress_seconds, duration_seconds, completed_at, updated_at)\n        VALUES (?, ?, ?, ?, ?, ?, ?)\n        ON DUPLICATE KEY UPDATE\n            watched = VALUES(watched),\n            progress_seconds = VALUES(progress_seconds),\n            duration_seconds = VALUES(duration_seconds),\n            completed_at = VALUES(completed_at),\n            updated_at = VALUES(updated_at)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "8be6efa7af0452f9420c4d5694266d5830d6fccb2f33e76222cba4a42afcbf08"
+}

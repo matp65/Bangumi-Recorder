@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { api, type BangumiItem, type GetRecordData } from '../api'
+import { api, type BangumiItem, type GetRecordData, type EpisodeItem } from '../api'
 import { Message, Modal } from '@arco-design/web-vue'
-import { IconArrowLeft, IconDelete } from '@arco-design/web-vue/es/icon'
+import { IconArrowLeft, IconDelete, IconDown, IconUp } from '@arco-design/web-vue/es/icon'
 
 const props = defineProps<{ bangumi_id: string }>()
 const router = useRouter()
@@ -40,6 +40,50 @@ const progressText = computed(() => {
   if (!recorder.value?.recorder) return '暂未记录进度'
   return recorder.value.recorder
 })
+
+const episodeExpanded = ref(false)
+const episodeList = ref<EpisodeItem[]>([])
+const episodeLoading = ref(false)
+
+async function loadEpisodes() {
+  if (episodeList.value.length > 0) {
+    episodeExpanded.value = !episodeExpanded.value
+    return
+  }
+  episodeLoading.value = true
+  episodeExpanded.value = true
+  try {
+    const res = await api.listEpisodes(parseInt(props.bangumi_id))
+    if (res.status === 0 && res.data) {
+      episodeList.value = res.data
+    }
+  } catch {
+    Message.error('获取剧集列表失败')
+  } finally {
+    episodeLoading.value = false
+  }
+}
+
+async function toggleWatched(ep: EpisodeItem) {
+  const newWatched = !ep.watched
+  const res = await api.updateEpisode(parseInt(props.bangumi_id), ep.ordinal, { watched: newWatched })
+  if (res.status === 0 && res.data) {
+    ep.watched = res.data.watched
+    ep.progress_seconds = res.data.progress_seconds
+    ep.completed_at = res.data.completed_at
+    ep.updated_at = res.data.updated_at
+    await fetchData()
+  } else {
+    Message.error(res.message || '更新失败')
+  }
+}
+
+function formatTime(sec: number | null): string {
+  if (sec == null || sec <= 0) return ''
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
 
 async function fetchData() {
   loading.value = true
@@ -271,6 +315,46 @@ onMounted(fetchData)
               <a-tag color="gray" size="large">暂未记录进度</a-tag>
             </div>
           </div>
+
+          <a-divider />
+
+          <div>
+            <a-button type="text" size="large" @click="loadEpisodes">
+              {{ episodeExpanded ? '收起剧集列表' : '展开剧集列表' }}
+              <icon-down v-if="!episodeExpanded" />
+              <icon-up v-else />
+            </a-button>
+          </div>
+
+          <a-spin :loading="episodeLoading">
+            <div v-if="episodeExpanded && episodeList.length > 0" style="margin-top: 8px">
+              <div
+                v-for="ep in episodeList"
+                :key="ep.ordinal"
+                style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 6px; cursor: pointer; transition: background 0.2s"
+                :style="{ background: ep.watched ? '#e8f5e9' : 'transparent' }"
+                @mouseenter="($event) => ($event.currentTarget as HTMLElement).style.background = ep.watched ? '#c8e6c9' : '#f5f5f5'"
+                @mouseleave="($event) => ($event.currentTarget as HTMLElement).style.background = ep.watched ? '#e8f5e9' : 'transparent'"
+                @click="toggleWatched(ep)"
+              >
+                <a-checkbox :model-value="ep.watched" @click.stop="toggleWatched(ep)" />
+                <span style="min-width: 32px; font-weight: 600; color: #1d2129">
+                  {{ ep.ordinal }}
+                </span>
+                <span style="flex: 1; color: #4e5969; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                  {{ ep.name_cn || ep.title || `第 ${ep.ordinal} 集` }}
+                </span>
+                <span v-if="ep.progress_seconds != null && ep.progress_seconds > 0" style="color: #86909c; font-size: 13px">
+                  {{ formatTime(ep.progress_seconds) }}
+                </span>
+                <a-tag v-if="ep.watched" color="green" size="small">已看</a-tag>
+                <a-tag v-else color="gray" size="small">未看</a-tag>
+              </div>
+            </div>
+            <div v-else-if="episodeExpanded && !episodeLoading" style="padding: 16px; text-align: center; color: #86909c">
+              暂无剧集数据
+            </div>
+          </a-spin>
         </div>
       </div>
     </a-spin>

@@ -1,5 +1,5 @@
 use axum::{
-    Router, middleware, routing::{get, post, put}, response::Html,
+    Router, middleware, routing::{get, post, put, patch}, response::Html,
     http::{header, StatusCode}, response::IntoResponse,
 };
 use rust_embed::RustEmbed;
@@ -188,6 +188,7 @@ async fn main() {
         .route("/search", get(api::v2::search::search_bangumi))
         .route("/search/local", get(api::v2::search::search_local))
         .route("/bangumi/:id", get(api::v2::search::get_bangumi))
+        .route("/bangumi/:id/episodes", get(api::v2::search::get_bangumi_episodes))
         // Records
         .route("/records", get(api::v2::record::list_recorder).post(api::v2::record::add_record))
         .route("/records/detail", get(api::v2::record::get_detail_list))
@@ -196,6 +197,12 @@ async fn main() {
             .delete(api::v2::record::delete_record_by_bangumi))
         .route("/records/custom/:id", get(api::v2::record::get_record_by_custom)
             .delete(api::v2::record::delete_record_by_custom))
+        // Per-user episode tracking
+        .route("/records/bangumi/:id/episodes", get(api::v2::episodes::list_episodes))
+        .route("/records/bangumi/:id/episodes/:ordinal", patch(api::v2::episodes::update_episode))
+        // Sync
+        .route("/sync", post(api::v2::sync::sync_records))
+        .route("/sync/incremental", get(api::v2::sync::incremental_sync))
         // User profile
         .route("/me", get(api::v2::user::get_info).patch(api::v2::user::update_info))
         .route("/me/password", put(api::v2::user::update_password))
@@ -221,7 +228,14 @@ async fn main() {
         .route("/me", get(api::v2::open::user::get_info))
         .route("/search", get(api::v2::open::search::search_bangumi))
         .route("/bangumi/:id", get(api::v2::open::search::get_bangumi))
+        .route("/bangumi/:id/episodes", get(api::v2::open::search::get_bangumi_episodes))
         .route("/search/local", get(api::v2::open::search::search_local))
+        // Episodes (per-user tracking)
+        .route("/episodes/:bangumi_id", get(api::v2::open::episodes::list_episodes))
+        .route("/episodes/:bangumi_id/:ordinal", patch(api::v2::open::episodes::update_episode))
+        // Sync
+        .route("/sync", post(api::v2::open::sync::sync_records)
+            .get(api::v2::open::sync::incremental_sync))
         .with_state(pool.clone());
 
     let v2_auth_router = Router::new()

@@ -48,7 +48,7 @@ pub async fn add_record(
                     local_other_id: inner.local_other_id,
                     bangumi_id: inner.bangumi_id,
                     recorder: inner.recorder,
-                    date: inner.date,
+                    date: inner.date.map(|d| d.and_hms_opt(0, 0, 0).unwrap()),
                 }),
                 -2 => not_found("Bangumi not found"),
                 -3 => conflict("Record already exists"),
@@ -144,7 +144,7 @@ pub async fn get_record_by_bangumi(
                     recorder: inner.recorder,
                     user_status: inner.user_status,
                     is_delete: inner.is_delete,
-                    date: inner.date,
+                    date: inner.date.map(|d| d.and_hms_opt(0, 0, 0).unwrap()),
                 })
             } else {
                 not_found("Record not found")
@@ -264,7 +264,7 @@ pub async fn get_record_by_custom(
                     recorder: inner.recorder,
                     user_status: inner.user_status,
                     is_delete: inner.is_delete,
-                    date: inner.date,
+                    date: inner.date.map(|d| d.and_hms_opt(0, 0, 0).unwrap()),
                 })
             } else {
                 not_found("Record not found")

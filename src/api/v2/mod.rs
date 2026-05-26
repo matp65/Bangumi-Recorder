@@ -5,3 +5,5 @@ pub mod user;
 pub mod auth;
 pub mod open;
 pub mod token;
+pub mod episodes;
+pub mod sync;

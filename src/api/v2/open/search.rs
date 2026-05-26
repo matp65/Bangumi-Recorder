@@ -16,6 +16,7 @@ use crate::api::v2::response::{unauthorized as v2_unauthorized, forbidden as v2_
 
 pub use crate::api::search::BangumiItem;
 pub use crate::api::v2::search::LocalSearchResult;
+pub use crate::api::v2::search::BangumiEpisodeMeta;
 
 #[derive(Deserialize)]
 pub struct SearchQuery {
@@ -83,6 +84,28 @@ pub async fn get_bangumi(
         Query(crate::api::v2::search::BangumiQuery {
             force: params.force,
         }),
+    )
+    .await
+}
+
+#[derive(Deserialize)]
+pub struct EpisodeListQuery {
+    pub token: Option<String>,
+}
+
+/// GET /api/v2/open/bangumi/:id/episodes?token=xxx
+pub async fn get_bangumi_episodes(
+    State(pool): State<MySqlPool>,
+    Path(id): Path<u32>,
+    Query(params): Query<EpisodeListQuery>,
+) -> (StatusCode, Json<ApiResponse<Vec<BangumiEpisodeMeta>>>) {
+    if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
+        return e;
+    }
+
+    crate::api::v2::search::get_bangumi_episodes(
+        State(pool),
+        Path(id),
     )
     .await
 }

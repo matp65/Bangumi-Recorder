@@ -1,0 +1,24 @@
+{
+  "db_name": "MySQL",
+  "query": "\n        SELECT MAX(ordinal) FROM episode_records\n        WHERE recording_id = ? AND watched = 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "MAX(ordinal)",
+        "type_info": {
+          "type": "Long",
+          "flags": "BINARY",
+          "max_size": 11
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "f557e243b197c6f3f8384937f46748c5ffeea74a826891b8f443be5a5c5b34c5"
+}

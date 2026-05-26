@@ -5,7 +5,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
-use chrono::{Duration, Utc};
+use chrono::{Duration, Utc, NaiveDate};
 
 use crate::api::search::{
     TitleSearchQuery, IDSearchQuery,
@@ -15,6 +15,7 @@ use crate::api::search::{
     search_local as v1_search_local,
 };
 use super::response::{success, not_found, internal_error, bad_request, ApiResponse};
+use super::episodes::parse_prg_list_episodes;
 
 pub use crate::api::search::BangumiItem;
 
@@ -135,6 +136,132 @@ pub async fn get_bangumi(
         },
         _ => internal_error("Search failed"),
     }
+}
+
+#[derive(Serialize)]
+pub struct BangumiEpisodeMeta {
+    pub ordinal: i32,
+    pub title: Option<String>,
+    pub name_cn: Option<String>,
+    pub airdate: Option<NaiveDate>,
+    pub duration: Option<String>,
+}
+
+/// GET /api/v2/bangumi/:id/episodes
+///
+/// Returns the episode list for a bangumi subject, scraped from bgm.tv and
+/// cached in the bangumi_episodes table.
+pub async fn get_bangumi_episodes(
+    State(pool): State<MySqlPool>,
+    Path(id): Path<u32>,
+) -> (StatusCode, Json<ApiResponse<Vec<BangumiEpisodeMeta>>>) {
+    let id_str = id.to_string();
+
+    let easy_id = match sqlx::query_scalar!(
+        "SELECT id FROM bangumi_info_easy WHERE external_id = ?",
+        id_str
+    )
+    .fetch_optional(&pool)
+    .await
+    {
+        Ok(Some(eid)) => eid,
+        Ok(None) => return not_found("Bangumi not found in cache. Search first."),
+        Err(e) => {
+            log::error!("DB error: {:?}", e);
+            return internal_error("Database error");
+        }
+    };
+
+    let cached = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM bangumi_episodes WHERE bangumi_easy_id = ?",
+        easy_id
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(0);
+
+    if cached == 0 {
+        if let Err(_) = scrape_and_cache_episodes(&pool, easy_id, &id_str).await {
+            return internal_error("Failed to scrape episode data");
+        }
+    }
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT ordinal, title, name_cn, airdate, duration
+        FROM bangumi_episodes
+        WHERE bangumi_easy_id = ?
+        ORDER BY ordinal ASC
+        "#,
+        easy_id
+    )
+    .fetch_all(&pool)
+    .await;
+
+    match rows {
+        Ok(rows) => {
+            let episodes: Vec<BangumiEpisodeMeta> = rows
+                .into_iter()
+                .map(|r| BangumiEpisodeMeta {
+                    ordinal: r.ordinal,
+                    title: r.title,
+                    name_cn: r.name_cn,
+                    airdate: r.airdate,
+                    duration: r.duration,
+                })
+                .collect();
+            success(episodes)
+        }
+        Err(e) => {
+            log::error!("DB error: {:?}", e);
+            internal_error("Database error")
+        }
+    }
+}
+
+/// Scrape bgm.tv episode list and cache into bangumi_episodes.
+/// Used by both the JWT and open endpoints.
+pub async fn scrape_and_cache_episodes(
+    pool: &MySqlPool,
+    easy_id: u32,
+    bangumi_id: &str,
+) -> Result<(), ()> {
+    let url = format!("https://bgm.tv/subject/{}", bangumi_id);
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("User-Agent", "Mozilla/5.0")
+        .send()
+        .await
+        .map_err(|_| ())?;
+
+    let html = resp.text().await.map_err(|_| ())?;
+
+    let episodes = parse_prg_list_episodes(&html);
+
+    for ep in episodes {
+        let _ = sqlx::query!(
+            r#"
+            INSERT INTO bangumi_episodes (bangumi_easy_id, ordinal, title, name_cn, airdate, duration)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                title = VALUES(title),
+                name_cn = VALUES(name_cn),
+                airdate = VALUES(airdate),
+                duration = VALUES(duration)
+            "#,
+            easy_id,
+            ep.ordinal,
+            ep.title,
+            ep.name_cn,
+            ep.airdate,
+            ep.duration
+        )
+        .execute(pool)
+        .await;
+    }
+
+    Ok(())
 }
 
 /// GET /api/v2/search/local?q=keyword&page=1&page_size=20
