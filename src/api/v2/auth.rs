@@ -182,7 +182,7 @@ pub async fn register(
     };
 
     // Create default API token with all permissions
-    let _ = sqlx::query(
+    if let Err(e) = sqlx::query(
         "INSERT INTO api_tokens (user_id, name, token_hash, permissions) VALUES (?, ?, ?, ?)"
     )
     .bind(user_id)
@@ -190,7 +190,10 @@ pub async fn register(
     .bind(&api_token_hash)
     .bind(ALL_COMBINED as i64)
     .execute(&pool)
-    .await;
+    .await
+    {
+        log::error!("Failed to create default API token for user {}: {:?}", user_id, e);
+    }
 
     let token = match build_claims(user_id, username, &std::env::var("JWT_SECRET").expect("JWT_SECRET must be set")) {
         Ok(token) => token,

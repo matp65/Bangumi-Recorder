@@ -10,6 +10,7 @@ use reqwest::Client;
 use urlencoding::encode;
 use scraper::{Html, Selector, ElementRef};
 use sqlx::mysql::MySqlPool;
+use sqlx::QueryBuilder;
 
 use chrono::{Duration, Utc, NaiveDate};
 
@@ -200,39 +201,23 @@ pub async fn search_bangumi_by_title(
         results
     };
 
-    for result in &results {
-        match sqlx::query_scalar!(
-            "SELECT id FROM bangumi_info_easy WHERE external_id = ?",
-            result.bangumi_id
-        )
-        .fetch_optional(&pool)
-        .await
-        {
-            Ok(Some(_)) => {
-                let _ = sqlx::query!(
-                    "UPDATE bangumi_info_easy SET title = ?, type = ?, info = ?, cover_url = ?, updated_at = CURRENT_TIMESTAMP WHERE external_id = ?",
-                    result.title,
-                    result.r#type,
-                    result.info,
-                    result.cover,
-                    result.bangumi_id,
-                )
-                .execute(&pool)
-                .await;
-            }
-            Ok(None) => {
-                let _ = sqlx::query!(
-                    "INSERT INTO bangumi_info_easy (external_id, title, type, info, cover_url) VALUES (?, ?, ?, ?, ?)",
-                    result.bangumi_id,
-                    result.title,
-                    result.r#type,
-                    result.info,
-                    result.cover,
-                )
-                .execute(&pool)
-                .await;
-            }
-            Err(_) => {}
+    // Batch upsert all search results into bangumi_info_easy cache
+    if !results.is_empty() {
+        let mut qb = QueryBuilder::new(
+            "INSERT INTO bangumi_info_easy (external_id, title, type, info, cover_url) ",
+        );
+        qb.push_values(results.iter(), |mut b, r| {
+            b.push_bind(r.bangumi_id.as_str())
+             .push_bind(r.title.as_str())
+             .push_bind(r.r#type)
+             .push_bind(r.info.as_str())
+             .push_bind(r.cover.as_str());
+        });
+        qb.push(
+            " ON DUPLICATE KEY UPDATE title = VALUES(title), type = VALUES(type), info = VALUES(info), cover_url = VALUES(cover_url), updated_at = CURRENT_TIMESTAMP",
+        );
+        if let Err(e) = qb.build().execute(&pool).await {
+            log::error!("batch upsert bangumi_info_easy error: {:?}", e);
         }
     }
 
@@ -502,7 +487,7 @@ pub async fn search_bangumi_by_id(
     .await
     {
         Ok(Some(_)) => {
-            let _ = sqlx::query!(
+            if let Err(e) = sqlx::query!(
                 "UPDATE bangumi_info_detailed SET type = ?, author = ?, release_date = ?, episodes = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE bangumi_id = ?",
                 result.r#type,
                 result.author,
@@ -512,10 +497,13 @@ pub async fn search_bangumi_by_id(
                 bangumi_easy_id,
             )
             .execute(&pool)
-            .await;
+            .await
+            {
+                log::error!("Failed to update bangumi_info_detailed: {:?}", e);
+            }
         }
         Ok(None) => {
-            let _ = sqlx::query!(
+            if let Err(e) = sqlx::query!(
                 "INSERT INTO bangumi_info_detailed (bangumi_id, type, author, release_date, episodes, description) VALUES (?, ?, ?, ?, ?, ?)",
                 bangumi_easy_id,
                 result.r#type,
@@ -525,9 +513,14 @@ pub async fn search_bangumi_by_id(
                 result.description,
             )
             .execute(&pool)
-            .await;
+            .await
+            {
+                log::error!("Failed to insert bangumi_info_detailed: {:?}", e);
+            }
         }
-        Err(_) => {}
+        Err(e) => {
+            log::error!("Failed to query bangumi_info_detailed: {:?}", e);
+        }
     };
 
     Json(IDSearchResponse {
@@ -650,11 +643,12 @@ pub async fn search_local(
 
             let total = bangumi_count + other_count;
 
-            let fetch_limit = page * page_size;
+            let offset = (page - 1) * page_size;
             let bangumi_rows = sqlx::query!(
-                "SELECT id, external_id, title, type, cover_url FROM bangumi_info_easy WHERE title LIKE ? ORDER BY id LIMIT ?",
+                "SELECT id, external_id, title, type, cover_url FROM bangumi_info_easy WHERE title LIKE ? ORDER BY id LIMIT ? OFFSET ?",
                 like_pattern,
-                fetch_limit as i64
+                page_size as i64,
+                offset as i64
             )
             .fetch_all(&pool)
             .await;
@@ -682,9 +676,10 @@ pub async fn search_local(
             }
 
             let other_rows = sqlx::query!(
-                "SELECT id, name, description, cover_url FROM other_recorders WHERE name LIKE ? ORDER BY id LIMIT ?",
+                "SELECT id, name, description, cover_url FROM other_recorders WHERE name LIKE ? ORDER BY id LIMIT ? OFFSET ?",
                 like_pattern,
-                fetch_limit as i64
+                page_size as i64,
+                offset as i64
             )
             .fetch_all(&pool)
             .await;
@@ -702,17 +697,9 @@ pub async fn search_local(
                 }
             }
 
-            let offset = ((page - 1) * page_size) as usize;
-            let paged: Vec<LocalSearchItem> = if offset >= results.len() {
-                Vec::new()
-            } else {
-                let end = (offset + page_size as usize).min(results.len());
-                results[offset..end].to_vec()
-            };
-
             return Json(LocalSearchResponse {
                 status: 0,
-                data: Some(paged),
+                data: Some(results),
                 total: Some(total),
                 page: Some(page),
                 page_size: Some(page_size),

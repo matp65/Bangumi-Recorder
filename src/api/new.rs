@@ -176,14 +176,17 @@ pub async fn add_record(
                         date: None,
                     });
                 }
-                let _ = sqlx::query!(
+                if let Err(e) = sqlx::query!(
                     "UPDATE recordings SET is_delete = 0, status = ?, recorder = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                     user_status,
                     recorder,
                     k.id
                 )
                 .execute(&pool)
-                .await;
+                .await
+                {
+                    log::error!("Failed to restore soft-deleted (bangumi) recording {}: {:?}", k.id, e);
+                }
                 return Json(AddRecordResponse {
                     status: 0,
                     local_bangumi_id: Some(bangumi_id),
@@ -318,14 +321,17 @@ pub async fn add_record(
                         date: None,
                     });
                 }
-                let _ = sqlx::query!(
+                if let Err(e) = sqlx::query!(
                     "UPDATE recordings SET is_delete = 0, status = ?, recorder = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                     user_status,
                     recorder,
                     k.id
                 )
                 .execute(&pool)
-                .await;
+                .await
+                {
+                    log::error!("Failed to restore soft-deleted (other) recording {}: {:?}", k.id, e);
+                }
                 return Json(AddRecordResponse {
                     status: 0,
                     local_bangumi_id: None,

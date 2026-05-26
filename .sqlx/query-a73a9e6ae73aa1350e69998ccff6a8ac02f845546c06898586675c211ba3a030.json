@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "SELECT id, name, description, cover_url FROM other_recorders WHERE name LIKE ? ORDER BY id LIMIT ?",
+  "query": "SELECT id, external_id, title, type, cover_url FROM bangumi_info_easy WHERE title LIKE ? ORDER BY id LIMIT ? OFFSET ?",
   "describe": {
     "columns": [
       {
@@ -14,24 +14,33 @@
       },
       {
         "ordinal": 1,
-        "name": "name",
+        "name": "external_id",
         "type_info": {
           "type": "VarString",
-          "flags": "",
-          "max_size": 1020
+          "flags": "NOT_NULL | UNIQUE_KEY | NO_DEFAULT_VALUE",
+          "max_size": 200
         }
       },
       {
         "ordinal": 2,
-        "name": "description",
+        "name": "title",
         "type_info": {
-          "type": "Blob",
-          "flags": "BLOB",
-          "max_size": 262140
+          "type": "VarString",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "max_size": 1020
         }
       },
       {
         "ordinal": 3,
+        "name": "type",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "max_size": 4
+        }
+      },
+      {
+        "ordinal": 4,
         "name": "cover_url",
         "type_info": {
           "type": "VarString",
@@ -41,14 +50,15 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 3
     },
     "nullable": [
       false,
-      true,
-      true,
+      false,
+      false,
+      false,
       true
     ]
   },
-  "hash": "924c7e60da13f5547168c50cf4aab1b269164da639677a273fe013a0b0adcb9c"
+  "hash": "a73a9e6ae73aa1350e69998ccff6a8ac02f845546c06898586675c211ba3a030"
 }

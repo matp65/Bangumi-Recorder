@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use axum::{
     extract::{Extension, Query, State},
     http::StatusCode,
@@ -5,6 +7,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
+use sqlx::QueryBuilder;
 use chrono::NaiveDateTime;
 
 use crate::auth_bearer::AuthUser;
@@ -47,155 +50,137 @@ async fn do_sync(
     user_id: i64,
     body: SyncRequestBody,
 ) -> Result<SyncResponseData, ()> {
-    let mut server_records: Vec<SyncResponseRecord> = Vec::new();
-    let mut client_bangumi_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    const MAX_SYNC_RECORDS: usize = 10_000;
+    if body.records.len() > MAX_SYNC_RECORDS {
+        log::warn!(
+            "User {} attempted to sync {} records (limit: {})",
+            user_id, body.records.len(), MAX_SYNC_RECORDS
+        );
+        return Err(());
+    }
 
-    for client_rec in &body.records {
-        client_bangumi_ids.insert(client_rec.bangumi_id.clone());
+    let mut client_bangumi_ids = HashSet::with_capacity(body.records.len());
+    for rec in &body.records {
+        client_bangumi_ids.insert(rec.bangumi_id.clone());
+    }
 
-        let easy_id = match sqlx::query_scalar!(
-            "SELECT id FROM bangumi_info_easy WHERE external_id = ?",
-            client_rec.bangumi_id
-        )
-        .fetch_optional(pool)
-        .await
-        {
-            Ok(Some(id)) => id,
-            Ok(None) => continue,
-            Err(_) => continue,
-        };
-
-        let existing = sqlx::query!(
-            r#"
-            SELECT r.id, r.recorder, r.status, r.updated_at
-            FROM recordings r
-            WHERE r.user_id = ? AND r.bangumi_id = ?
-            "#,
-            user_id,
-            easy_id
-        )
-        .fetch_optional(pool)
-        .await;
-
-        let existing = match existing {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-
-        if let Some(server_rec) = existing {
-            let server_ts = server_rec.updated_at;
-            let client_ts = client_rec.updated_at.unwrap_or(server_ts);
-
-            if client_ts > server_ts {
-                let _ = sqlx::query!(
-                    "UPDATE recordings SET recorder = ?, status = ?, updated_at = ? WHERE id = ?",
-                    client_rec.recorder,
-                    client_rec.user_status.map(|s| s as i8),
-                    client_ts,
-                    server_rec.id
-                )
-                .execute(pool)
-                .await;
-            }
-
-            let final_rec = sqlx::query!(
-                r#"
-                SELECT r.recorder, r.status, r.updated_at
-                FROM recordings r
-                WHERE r.id = ?
-                "#,
-                server_rec.id
-            )
-            .fetch_optional(pool)
-            .await;
-
-            if let Ok(Some(r)) = final_rec {
-                server_records.push(SyncResponseRecord {
-                    bangumi_id: client_rec.bangumi_id.clone(),
-                    recorder: r.recorder,
-                    user_status: Some(r.status),
-                    updated_at: r.updated_at,
-                });
-            }
-        } else {
-            let user_status = client_rec.user_status.map(|s| s as i8).unwrap_or(0);
-            let now = client_rec.updated_at.unwrap_or_else(|| chrono::Utc::now().naive_utc());
-
-            let _ = sqlx::query!(
-                r#"
-                INSERT INTO recordings (user_id, bangumi_id, recorder, status, updated_at, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                "#,
-                user_id,
-                easy_id,
-                client_rec.recorder,
-                user_status,
-                now,
-                now
-            )
-            .execute(pool)
-            .await;
-
-            server_records.push(SyncResponseRecord {
-                bangumi_id: client_rec.bangumi_id.clone(),
-                recorder: client_rec.recorder.clone(),
-                user_status: Some(user_status),
-                updated_at: now,
-            });
+    let mut external_to_easy: HashMap<String, i64> =
+        HashMap::with_capacity(body.records.len());
+    if !body.records.is_empty() {
+        let mut qb = QueryBuilder::new(
+            "SELECT id, external_id FROM bangumi_info_easy WHERE external_id IN (",
+        );
+        let mut sep = qb.separated(", ");
+        for rec in &body.records {
+            sep.push_bind(rec.bangumi_id.as_str());
+        }
+        sep.push_unseparated(")");
+        let rows: Vec<(i64, String)> = qb
+            .build_query_as()
+            .fetch_all(pool)
+            .await
+            .map_err(|e| log::error!("batch resolve bangumi error: {:?}", e))?;
+        for (id, external_id) in rows {
+            external_to_easy.insert(external_id, id);
         }
     }
 
-    let mut deleted: Vec<String> = Vec::new();
+    // Step 2: Collect all records to upsert (only those with resolved bangumi IDs)
+    struct PendingWrite {
+        easy_id: i64,
+        recorder: Option<String>,
+        status: i8,
+        updated_at: NaiveDateTime,
+    }
 
-    let server_all = sqlx::query!(
+    let mut to_write: Vec<PendingWrite> = Vec::with_capacity(external_to_easy.len());
+    for client_rec in &body.records {
+        let easy_id = match external_to_easy.get(&client_rec.bangumi_id) {
+            Some(&id) => id,
+            None => continue,
+        };
+        let status = client_rec.user_status.map(|s| s as i8).unwrap_or(0);
+        let client_ts =
+            client_rec.updated_at.unwrap_or_else(|| chrono::Utc::now().naive_utc());
+        to_write.push(PendingWrite {
+            easy_id,
+            recorder: client_rec.recorder.clone(),
+            status,
+            updated_at: client_ts,
+        });
+    }
+
+    // Step 3: Single batch upsert (INSERT + UPDATE) with DB-level conflict resolution
+    let mut tx = pool.begin().await.map_err(|e| {
+        log::error!("tx begin error: {:?}", e);
+    })?;
+
+    if !to_write.is_empty() {
+        let mut qb = QueryBuilder::new(
+            "INSERT INTO recordings (user_id, bangumi_id, recorder, status, updated_at, created_at) ",
+        );
+        qb.push_values(to_write.iter(), |mut b, item| {
+            b.push_bind(user_id)
+             .push_bind(item.easy_id)
+             .push_bind(&item.recorder)
+             .push_bind(item.status)
+             .push_bind(item.updated_at)
+             .push_bind(item.updated_at);
+        });
+        qb.push(
+            " ON DUPLICATE KEY UPDATE \
+             recorder = IF(VALUES(updated_at) > updated_at, VALUES(recorder), recorder), \
+             status = IF(VALUES(updated_at) > updated_at, VALUES(status), status), \
+             updated_at = IF(VALUES(updated_at) > updated_at, VALUES(updated_at), updated_at)",
+        );
+        qb.build().execute(&mut *tx).await.map_err(|e| {
+            log::error!("batch upsert error: {:?}", e);
+        })?;
+    }
+
+    // Step 4: Query authoritative server state (post-write)
+    let server_rows = sqlx::query!(
         r#"
-        SELECT b.external_id AS bangumi_id, r.is_delete
+        SELECT b.external_id AS bangumi_id, r.recorder, r.status, r.updated_at, r.is_delete
         FROM recordings r
         JOIN bangumi_info_easy b ON r.bangumi_id = b.id
         WHERE r.user_id = ? AND r.bangumi_id IS NOT NULL
         "#,
         user_id
     )
-    .fetch_all(pool)
-    .await;
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| log::error!("server state query error: {:?}", e))?;
 
-    if let Ok(rows) = server_all {
-        for r in rows {
-            let bid = r.bangumi_id;
-            if !client_bangumi_ids.contains(&bid) {
-                if r.is_delete != 0 {
-                    deleted.push(bid.clone());
-                } else {
-                    let rec = sqlx::query!(
-                        r#"
-                        SELECT r.recorder, r.status, r.updated_at
-                        FROM recordings r
-                        JOIN bangumi_info_easy b ON r.bangumi_id = b.id
-                        WHERE b.external_id = ? AND r.user_id = ?
-                        "#,
-                        bid,
-                        user_id
-                    )
-                    .fetch_optional(pool)
-                    .await;
+    tx.commit().await.map_err(|e| {
+        log::error!("tx commit error: {:?}", e);
+    })?;
 
-                    if let Ok(Some(rr)) = rec {
-                        server_records.push(SyncResponseRecord {
-                            bangumi_id: bid.clone(),
-                            recorder: rr.recorder,
-                            user_status: Some(rr.status),
-                            updated_at: rr.updated_at,
-                        });
-                    }
-                }
-            }
+    let mut records: Vec<SyncResponseRecord> = Vec::with_capacity(server_rows.len());
+    let mut deleted: Vec<String> = Vec::new();
+
+    for r in server_rows {
+        let bangumi_id = r.bangumi_id;
+        if client_bangumi_ids.contains(&bangumi_id) {
+            records.push(SyncResponseRecord {
+                bangumi_id,
+                recorder: r.recorder,
+                user_status: Some(r.status),
+                updated_at: r.updated_at,
+            });
+        } else if r.is_delete != 0 {
+            deleted.push(bangumi_id);
+        } else {
+            records.push(SyncResponseRecord {
+                bangumi_id,
+                recorder: r.recorder,
+                user_status: Some(r.status),
+                updated_at: r.updated_at,
+            });
         }
     }
 
-    Ok(SyncResponseData {
-        records: server_records,
-        deleted,
-    })
+    Ok(SyncResponseData { records, deleted })
 }
 
 async fn do_incremental_sync(

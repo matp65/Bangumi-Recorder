@@ -73,14 +73,18 @@ pub async fn update_info(
 ) -> Json<UserResponse> {
     let user_id = auth_user.user_id;
 
-    let _result = sqlx::query!(
+    match sqlx::query!(
         "UPDATE users SET nickname = COALESCE(?, nickname), avatar = COALESCE(?, avatar) WHERE id = ?",
         payload.nickname,
         payload.avatar,
         user_id
     )
     .execute(&pool)
-    .await;
+    .await
+    {
+        Ok(_) => {}
+        Err(e) => log::error!("Failed to update user info for {}: {:?}", user_id, e),
+    };
 
     return Json(UserResponse { 
         status: 0,
@@ -122,13 +126,17 @@ pub async fn update_password(
                     }),
                 };
 
-                let _result = sqlx::query!(
+                match sqlx::query!(
                     "UPDATE users SET password_hash = ? WHERE id = ?",
                     new_password_hash,
                     user_id
                 )
                 .execute(&pool)
-                .await;
+                .await
+                {
+                    Ok(_) => {}
+                    Err(e) => log::error!("Failed to update password for {}: {:?}", user_id, e),
+                }
 
                 Json(UserResponse { 
                     status: 0,

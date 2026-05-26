@@ -5,6 +5,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
+use sqlx::QueryBuilder;
 use chrono::{NaiveDate, NaiveDateTime, Utc};
 use reqwest::Client;
 use scraper::{Html, Selector};
@@ -306,14 +307,17 @@ pub async fn update_episode(
     };
     let new_recorder = format!("{}|{}", count, time_str);
 
-    let _ = sqlx::query!(
+    if let Err(e) = sqlx::query!(
         "UPDATE recordings SET recorder = ?, updated_at = ? WHERE id = ?",
         new_recorder,
         now,
         recording_id
     )
     .execute(&pool)
-    .await;
+    .await
+    {
+        log::error!("Failed to sync recorder after episode update: {:?}", e);
+    }
 
     success(updated)
 }
@@ -531,36 +535,40 @@ pub(crate) async fn ensure_episode_metadata_cached(pool: &MySqlPool, easy_id: u3
         .await
     {
         Ok(r) => r,
-        Err(_) => return,
+        Err(e) => {
+            log::error!("Failed to fetch episode metadata page for {}: {:?}", bangumi_id, e);
+            return;
+        }
     };
 
     let html = match resp.text().await {
         Ok(t) => t,
-        Err(_) => return,
+        Err(e) => {
+            log::error!("Failed to decode episode metadata page for {}: {:?}", bangumi_id, e);
+            return;
+        }
     };
 
     let episodes = parse_prg_list_episodes(&html);
 
-    for ep in episodes {
-        let _ = sqlx::query!(
-            r#"
-            INSERT INTO bangumi_episodes (bangumi_easy_id, ordinal, title, name_cn, airdate, duration)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE
-                title = VALUES(title),
-                name_cn = VALUES(name_cn),
-                airdate = VALUES(airdate),
-                duration = VALUES(duration)
-            "#,
-            easy_id,
-            ep.ordinal,
-            ep.title,
-            ep.name_cn,
-            ep.airdate,
-            ep.duration
-        )
-        .execute(pool)
-        .await;
+    if !episodes.is_empty() {
+        let mut qb = QueryBuilder::new(
+            "INSERT INTO bangumi_episodes (bangumi_easy_id, ordinal, title, name_cn, airdate, duration) ",
+        );
+        qb.push_values(episodes.iter(), |mut b, ep| {
+            b.push_bind(easy_id)
+             .push_bind(ep.ordinal)
+             .push_bind(&ep.title)
+             .push_bind(&ep.name_cn)
+             .push_bind(ep.airdate)
+             .push_bind(&ep.duration);
+        });
+        qb.push(
+            " ON DUPLICATE KEY UPDATE title = VALUES(title), name_cn = VALUES(name_cn), airdate = VALUES(airdate), duration = VALUES(duration)",
+        );
+        if let Err(e) = qb.build().execute(pool).await {
+            log::error!("batch insert bangumi_episodes error: {:?}", e);
+        }
     }
 }
 

@@ -1,15 +1,15 @@
 {
   "db_name": "MySQL",
-  "query": "\n            SELECT r.id, r.recorder, r.status, r.updated_at\n            FROM recordings r\n            WHERE r.user_id = ? AND r.bangumi_id = ?\n            ",
+  "query": "\n        SELECT b.external_id AS bangumi_id, r.recorder, r.status, r.updated_at, r.is_delete\n        FROM recordings r\n        JOIN bangumi_info_easy b ON r.bangumi_id = b.id\n        WHERE r.user_id = ? AND r.bangumi_id IS NOT NULL\n        ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id",
+        "name": "bangumi_id",
         "type_info": {
-          "type": "Long",
-          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | AUTO_INCREMENT",
-          "max_size": 10
+          "type": "VarString",
+          "flags": "NOT_NULL | UNIQUE_KEY | NO_DEFAULT_VALUE",
+          "max_size": 200
         }
       },
       {
@@ -38,17 +38,27 @@
           "flags": "NOT_NULL | BINARY | ON_UPDATE_NOW",
           "max_size": 19
         }
+      },
+      {
+        "ordinal": 4,
+        "name": "is_delete",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL",
+          "max_size": 4
+        }
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       false,
       true,
       false,
+      false,
       false
     ]
   },
-  "hash": "a7e10f1ecba09392cc80d053b127f2a81a7f014b9b0f090a85ecd10602ec5d7b"
+  "hash": "b17e3c08fef07096dd985861f374469fb76f6a446650826c8ad6c9cf7544946e"
 }
