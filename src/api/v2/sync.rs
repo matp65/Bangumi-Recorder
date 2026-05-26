@@ -64,7 +64,7 @@ async fn do_sync(
         client_bangumi_ids.insert(rec.bangumi_id.clone());
     }
 
-    let mut external_to_easy: HashMap<String, i64> =
+    let mut external_to_easy: HashMap<String, u32> =
         HashMap::with_capacity(body.records.len());
     if !body.records.is_empty() {
         let mut qb = QueryBuilder::new(
@@ -75,7 +75,7 @@ async fn do_sync(
             sep.push_bind(rec.bangumi_id.as_str());
         }
         sep.push_unseparated(")");
-        let rows: Vec<(i64, String)> = qb
+        let rows: Vec<(u32, String)> = qb
             .build_query_as()
             .fetch_all(pool)
             .await
@@ -87,7 +87,7 @@ async fn do_sync(
 
     // Step 2: Collect all records to upsert (only those with resolved bangumi IDs)
     struct PendingWrite {
-        easy_id: i64,
+        easy_id: u32,
         recorder: Option<String>,
         status: i8,
         updated_at: NaiveDateTime,
