@@ -374,7 +374,7 @@ pub async fn register(
     };
 
     // Create default API token with all permissions
-    let _ = sqlx::query(
+    if let Err(e) = sqlx::query(
         "INSERT INTO api_tokens (user_id, name, token_hash, permissions) VALUES (?, ?, ?, ?)"
     )
     .bind(user_id)
@@ -382,7 +382,10 @@ pub async fn register(
     .bind(&api_token_hash)
     .bind(ALL_COMBINED as i64)
     .execute(&pool)
-    .await;
+    .await
+    {
+        log::error!("Failed to create default API token: {:?}", e);
+    }
 
     let token = match build_claims(user_id, username.clone(), &std::env::var("JWT_SECRET").expect("JWT_SECRET must be set")) {
         Ok(token) => token,
@@ -430,7 +433,7 @@ pub async fn regenerate_api_token(
     let raw_token = uuid::Uuid::new_v4().to_string();
     let token_hash = hash_api_token(&raw_token);
 
-    match sqlx::query(
+    if let Err(e) = sqlx::query(
         "INSERT INTO api_tokens (user_id, name, token_hash, permissions) VALUES (?, ?, ?, ?)"
     )
     .bind(auth_user.user_id)
@@ -440,26 +443,25 @@ pub async fn regenerate_api_token(
     .execute(&pool)
     .await
     {
-        Ok(_) => (
-            StatusCode::OK,
+        log::error!("Failed to regenerate token: {:?}", e);
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
             AxumJson(TokenRegenerateResponse {
-                status: 0,
-                api_token: Some(raw_token),
-                message: None,
+                status: -1,
+                api_token: None,
+                message: Some("Failed to regenerate token".to_string()),
             }),
-        ),
-        Err(e) => {
-            log::error!("Failed to regenerate token: {:?}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                AxumJson(TokenRegenerateResponse {
-                    status: -1,
-                    api_token: None,
-                    message: Some("Failed to regenerate token".to_string()),
-                }),
-            )
-        }
+        );
     }
+
+    (
+        StatusCode::OK,
+        AxumJson(TokenRegenerateResponse {
+            status: 0,
+            api_token: Some(raw_token),
+            message: None,
+        }),
+    )
 }
 
 pub fn hash_password(

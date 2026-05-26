@@ -78,15 +78,18 @@ pub async fn check_api_token(
     )
     .bind(&token_hash)
     .fetch_optional(pool)
-    .await
-    .ok()?;
+    .await;
 
     let row = match row {
-        Some(r) => r,
-        None => return None,
+        Ok(Some(r)) => r,
+        Ok(None) => return None,
+        Err(e) => {
+            log::error!("Failed to check API token: {:?}", e);
+            return None;
+        }
     };
 
-    let user_id: i64 = match row.try_get("user_id") {
+    let user_id: u32 = match row.try_get("user_id") {
         Ok(v) => v,
         Err(_) => return None,
     };
@@ -101,7 +104,7 @@ pub async fn check_api_token(
         .execute(pool)
         .await;
 
-    Some(TokenInfo { user_id, permissions })
+    Some(TokenInfo { user_id: user_id as i64, permissions })
 }
 
 pub async fn require_api_token(

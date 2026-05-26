@@ -75,7 +75,7 @@ pub async fn regenerate_api_token(
     .bind(auth_user.user_id)
     .bind("Regenerated Token")
     .bind(&token_hash)
-    .bind(u64::MAX as i64)
+    .bind(crate::api::api_token::ALL_COMBINED as i64)
     .execute(&pool)
     .await
     {
