@@ -21,6 +21,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::MySqlPool;
 
+use crate::api::api_token::ALL_COMBINED;
+
 #[derive(Deserialize)]
 pub struct LoginRequest {
     pub username: Option<String>,
@@ -378,7 +380,7 @@ pub async fn register(
     .bind(user_id)
     .bind("Default Token")
     .bind(&api_token_hash)
-    .bind(u64::MAX as i64)
+    .bind(ALL_COMBINED as i64)
     .execute(&pool)
     .await;
 
@@ -434,7 +436,7 @@ pub async fn regenerate_api_token(
     .bind(auth_user.user_id)
     .bind("Regenerated Token")
     .bind(&token_hash)
-    .bind(u64::MAX as i64)
+    .bind(ALL_COMBINED as i64)
     .execute(&pool)
     .await
     {

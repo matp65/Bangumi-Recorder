@@ -6,6 +6,7 @@ use crate::auth_bearer::{
     LoginRequest, RegisterRequest,
     verify_password, hash_password, hash_api_token,
 };
+use crate::api::api_token::ALL_COMBINED;
 use super::response::{success, conflict, internal_error, unauthorized, forbidden, ApiResponse};
 
 #[derive(Serialize)]
@@ -187,7 +188,7 @@ pub async fn register(
     .bind(user_id)
     .bind("Default Token")
     .bind(&api_token_hash)
-    .bind(u64::MAX as i64)
+    .bind(ALL_COMBINED as i64)
     .execute(&pool)
     .await;
 
