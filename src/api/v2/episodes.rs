@@ -485,22 +485,40 @@ pub fn parse_prg_list_episodes(html: &str) -> Vec<ParsedEpisode> {
 
 pub(crate) async fn ensure_episode_metadata_cached(pool: &MySqlPool, easy_id: u32, bangumi_id: &str, force: bool) {
     if !force {
-        let max_updated = sqlx::query_scalar!(
-            "SELECT MAX(updated_at) FROM bangumi_episodes WHERE bangumi_easy_id = ?",
+        let count = sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM bangumi_episodes WHERE bangumi_easy_id = ?",
             easy_id
         )
         .fetch_one(pool)
         .await
-        .unwrap_or(None);
+        .unwrap_or(0);
 
-        let ttl = chrono::Duration::hours(24);
-        let needs_refresh = match max_updated {
-            Some(ts) => Utc::now().naive_utc() - ts > ttl,
-            None => true,
-        };
+        if count > 0 {
+            let incomplete = sqlx::query_scalar!(
+                "SELECT COUNT(*) FROM bangumi_episodes WHERE bangumi_easy_id = ? AND (title IS NULL OR name_cn IS NULL)",
+                easy_id
+            )
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
 
-        if !needs_refresh {
-            return;
+            if incomplete == 0 {
+                return;
+            }
+
+            let max_updated = sqlx::query_scalar!(
+                "SELECT MAX(updated_at) FROM bangumi_episodes WHERE bangumi_easy_id = ?",
+                easy_id
+            )
+            .fetch_one(pool)
+            .await
+            .unwrap_or(None);
+
+            let ttl = chrono::Duration::hours(24);
+            match max_updated {
+                Some(ts) if Utc::now().naive_utc() - ts <= ttl => return,
+                _ => {}
+            }
         }
     }
 
