@@ -178,6 +178,7 @@ paths:
   /api/v2/me/token:
     post:
       summary: 重新生成 API Token
+      description: 创建一个新的 Token（全部权限），旧的 Token 仍然有效
       tags: [用户]
       security: [{ BearerJWT: [] }]
       responses:
@@ -191,6 +192,117 @@ paths:
                   - properties:
                       data:
                         $ref: "#/components/schemas/TokenData"
+
+  # ────────────────────────────── API Token 管理 ─────────────────────
+  /api/v2/tokens:
+    get:
+      summary: 列出所有 API Token
+      tags: [API Token 管理]
+      security: [{ BearerJWT: [] }]
+      responses:
+        "200":
+          description: Token 列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ApiTokenItem"
+    post:
+      summary: 创建新的 API Token
+      tags: [API Token 管理]
+      security: [{ BearerJWT: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, permissions]
+              properties:
+                name:
+                  type: string
+                  description: Token 名称
+                permissions:
+                  type: integer
+                  description: 权限 bitmask
+      responses:
+        "200":
+          description: 创建成功，返回原始 Token（仅此一次）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/CreateTokenData"
+
+  /api/v2/tokens/{id}:
+    put:
+      summary: 更新 API Token
+      tags: [API Token 管理]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                permissions: { type: integer }
+                is_active: { type: boolean }
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiOk"
+        "404":
+          description: Token 未找到
+    delete:
+      summary: 删除/吊销 API Token
+      tags: [API Token 管理]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiOk"
+        "404":
+          description: Token 未找到
+
+  /api/v2/tokens/permissions:
+    get:
+      summary: 获取权限标签列表
+      tags: [API Token 管理]
+      security: [{ BearerJWT: [] }]
+      responses:
+        "200":
+          description: 权限标签列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PermissionLabel"
 
   # ────────────────────────────── 搜索 ──────────────────────────────
   /api/v2/search:
@@ -461,7 +573,9 @@ paths:
         "200": { description: 删除成功, content: { application/json: { schema: { $ref: "#/components/schemas/ApiOk" } } } }
         "404": { description: 记录未找到 }
 
-  # ────────────────────────────── 开放接口（API Token）──────────────────────────────
+  # ────────────────────────────── 开放接口（API Token，支持权限控制）────────────────
+  # 每个 Token 拥有独立权限组合，不满足所需权限时返回 403 Forbidden。
+  # 权限说明见 /api/v2/tokens/permissions
   /api/v2/open/search:
     get:
       summary: 在线搜索（API Token 鉴权）
@@ -814,6 +928,36 @@ components:
       oneOf:
         - required: [bangumi_id]
         - required: [other_id]
+
+    # ── API Token ──
+    ApiTokenItem:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        permissions: { type: integer, description: "权限 bitmask" }
+        is_active: { type: boolean }
+        last_used_at: { type: string, nullable: true, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, name, permissions, is_active, created_at, updated_at]
+
+    CreateTokenData:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        raw_token: { type: string, description: "原始 Token（仅创建时返回一次）" }
+        permissions: { type: integer }
+      required: [id, name, raw_token, permissions]
+
+    PermissionLabel:
+      type: object
+      properties:
+        label: { type: string, description: "权限名称" }
+        value: { type: integer, description: "权限 bit 值" }
+        description: { type: string, description: "权限说明" }
+      required: [label, value, description]
 
     # ── 版本 ──
     VersionInfo:

@@ -1,10 +1,10 @@
 use axum::{extract::{Query, State}, http::StatusCode, Json};
 use sqlx::mysql::MySqlPool;
 
-use crate::api::open::api_token::check_api_token;
+use crate::api::open::api_token::{require_token_with_perm, PERM_VIEW_INFO};
 use crate::api::open::user::GetTokenQuery;
 use crate::api::user::UserInfo;
-use crate::api::v2::response::{success, unauthorized, ApiResponse};
+use crate::api::v2::response::{success, unauthorized, forbidden, ApiResponse};
 
 pub async fn get_info(
     State(pool): State<MySqlPool>,
@@ -15,15 +15,17 @@ pub async fn get_info(
         None => return unauthorized("Missing API token"),
     };
 
-    let user_id = match check_api_token(&pool, token).await {
-        Some(id) => id,
-        None => return unauthorized("Invalid API token"),
+    let token_info = match require_token_with_perm(&pool, Some(token), &[PERM_VIEW_INFO]).await {
+        Ok(info) => info,
+        Err(StatusCode::UNAUTHORIZED) => return unauthorized("Invalid API token"),
+        Err(StatusCode::FORBIDDEN) => return forbidden("Insufficient permissions"),
+        Err(_) => return unauthorized("Invalid API token"),
     };
 
     let user_info = sqlx::query_as!(
         UserInfo,
         "SELECT id, uuid, username, nickname, email, avatar, status, DATE(created_at) AS reg_time FROM users WHERE id = ?",
-        user_id
+        token_info.user_id
     )
     .fetch_one(&pool)
     .await;

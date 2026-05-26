@@ -2,7 +2,6 @@ use axum::{extract::{Path, Query, State}, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
 
-use crate::api::open::api_token::require_api_token;
 use crate::api::open::new::add_record_open as v1_add_record_open;
 use crate::api::open::update_recorder::update_user_recorder as v1_update_recorder;
 use crate::api::open::delete_recorder::delete_recorder as v1_delete_recorder;
@@ -16,11 +15,19 @@ use crate::api::open::get_recorder::GetRecorderQuery;
 use crate::api::open::list::ListRecorderQuery;
 use crate::api::open::detail_list::DetailListQuery;
 use crate::api::v2::record::{AddRecordData, GetRecordData};
-use crate::api::v2::response::{success, success_empty, not_found, internal_error, unauthorized, bad_request, ApiResponse};
+use crate::api::v2::response::{success, success_empty, not_found, internal_error, unauthorized, forbidden, bad_request, ApiResponse};
 
 #[derive(Deserialize)]
 pub struct OpenTokenQuery {
     pub token: Option<String>,
+}
+
+fn handle_v1_err<T: Serialize>(e: StatusCode) -> (StatusCode, Json<ApiResponse<T>>) {
+    match e {
+        StatusCode::UNAUTHORIZED => unauthorized("Invalid API token"),
+        StatusCode::FORBIDDEN => forbidden("Insufficient permissions"),
+        _ => internal_error("Internal server error"),
+    }
 }
 
 pub async fn add_record(
@@ -48,8 +55,7 @@ pub async fn add_record(
                 _ => bad_request("Invalid parameters"),
             }
         }
-        Err(StatusCode::UNAUTHORIZED) => unauthorized("Invalid API token"),
-        Err(_) => internal_error("Internal server error"),
+        Err(e) => handle_v1_err(e),
     }
 }
 
@@ -78,8 +84,7 @@ pub async fn list_recorder(
                 internal_error("Failed to list records")
             }
         }
-        Err(StatusCode::UNAUTHORIZED) => unauthorized("Invalid API token"),
-        Err(_) => internal_error("Internal server error"),
+        Err(e) => handle_v1_err(e),
     }
 }
 
@@ -100,8 +105,7 @@ pub async fn get_detail_list(
                 internal_error("Failed to get detail list")
             }
         }
-        Err(StatusCode::UNAUTHORIZED) => unauthorized("Invalid API token"),
-        Err(_) => internal_error("Internal server error"),
+        Err(e) => handle_v1_err(e),
     }
 }
 
@@ -112,9 +116,9 @@ pub async fn get_record_by_bangumi(
     Path(id): Path<u32>,
     Query(token_q): Query<OpenTokenQuery>,
 ) -> (StatusCode, Json<ApiResponse<GetRecordData>>) {
-    let _user_id = match require_api_token(&pool, token_q.token.as_deref()).await {
-        Ok(uid) => uid,
-        Err(_) => return unauthorized("Invalid API token"),
+    let _token = match token_q.token.as_deref() {
+        Some(t) => t,
+        None => return unauthorized("Missing API token"),
     };
 
     match v1_get_recorder(
@@ -146,8 +150,7 @@ pub async fn get_record_by_bangumi(
                 not_found("Record not found")
             }
         }
-        Err(StatusCode::UNAUTHORIZED) => unauthorized("Invalid API token"),
-        Err(_) => internal_error("Internal server error"),
+        Err(e) => handle_v1_err(e),
     }
 }
 
@@ -163,11 +166,6 @@ pub async fn update_record_by_bangumi(
     Query(token_q): Query<OpenTokenQuery>,
     Json(body): Json<OpenUpdateBody>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
-    let _user_id = match require_api_token(&pool, token_q.token.as_deref()).await {
-        Ok(uid) => uid,
-        Err(_) => return unauthorized("Invalid API token"),
-    };
-
     match v1_update_recorder(
         State(pool.clone()),
         Query(UpdateRecorderQuery {
@@ -194,8 +192,7 @@ pub async fn update_record_by_bangumi(
                 }
             }
         }
-        Err(StatusCode::UNAUTHORIZED) => unauthorized("Invalid API token"),
-        Err(_) => internal_error("Internal server error"),
+        Err(e) => handle_v1_err(e),
     }
 }
 
@@ -204,11 +201,6 @@ pub async fn delete_record_by_bangumi(
     Path(id): Path<u32>,
     Query(token_q): Query<OpenTokenQuery>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
-    let _user_id = match require_api_token(&pool, token_q.token.as_deref()).await {
-        Ok(uid) => uid,
-        Err(_) => return unauthorized("Invalid API token"),
-    };
-
     match v1_delete_recorder(
         State(pool.clone()),
         Query(DeleteRecorderQuery {
@@ -235,8 +227,7 @@ pub async fn delete_record_by_bangumi(
                 }
             }
         }
-        Err(StatusCode::UNAUTHORIZED) => unauthorized("Invalid API token"),
-        Err(_) => internal_error("Internal server error"),
+        Err(e) => handle_v1_err(e),
     }
 }
 
@@ -245,9 +236,9 @@ pub async fn get_record_by_custom(
     Path(id): Path<u32>,
     Query(token_q): Query<OpenTokenQuery>,
 ) -> (StatusCode, Json<ApiResponse<GetRecordData>>) {
-    let _user_id = match require_api_token(&pool, token_q.token.as_deref()).await {
-        Ok(uid) => uid,
-        Err(_) => return unauthorized("Invalid API token"),
+    let _token = match token_q.token.as_deref() {
+        Some(t) => t,
+        None => return unauthorized("Missing API token"),
     };
 
     match v1_get_recorder(
@@ -279,8 +270,7 @@ pub async fn get_record_by_custom(
                 not_found("Record not found")
             }
         }
-        Err(StatusCode::UNAUTHORIZED) => unauthorized("Invalid API token"),
-        Err(_) => internal_error("Internal server error"),
+        Err(e) => handle_v1_err(e),
     }
 }
 
@@ -289,11 +279,6 @@ pub async fn delete_record_by_custom(
     Path(id): Path<u32>,
     Query(token_q): Query<OpenTokenQuery>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
-    let _user_id = match require_api_token(&pool, token_q.token.as_deref()).await {
-        Ok(uid) => uid,
-        Err(_) => return unauthorized("Invalid API token"),
-    };
-
     match v1_delete_recorder(
         State(pool.clone()),
         Query(DeleteRecorderQuery {
@@ -320,7 +305,6 @@ pub async fn delete_record_by_custom(
                 }
             }
         }
-        Err(StatusCode::UNAUTHORIZED) => unauthorized("Invalid API token"),
-        Err(_) => internal_error("Internal server error"),
+        Err(e) => handle_v1_err(e),
     }
 }

@@ -1,24 +1,6 @@
-use axum::http::StatusCode;
-use sha2::{Digest, Sha256};
-use sqlx::mysql::MySqlPool;
-
-pub async fn check_api_token(
-    pool: &MySqlPool,
-    token: &str
-) -> Option<i64> {
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    let token_hash = format!("{:x}", hasher.finalize());
-
-    let user_id = sqlx::query!("SELECT id FROM users WHERE api_token_hash = ?", token_hash)
-        .fetch_optional(pool)
-        .await
-        .ok()?
-        .map(|row| row.id as i64);
-    user_id
-}
-
-pub async fn require_api_token(pool: &MySqlPool, token: Option<&str>) -> Result<i64, StatusCode> {
-    let token = token.ok_or(StatusCode::UNAUTHORIZED)?;
-    check_api_token(pool, token).await.ok_or(StatusCode::UNAUTHORIZED)
-}
+// Re-export from the new centralized api_token module
+pub use crate::api::api_token::{
+    require_token_with_perm,
+    PERM_READ, PERM_WRITE, PERM_VIEW_INFO,
+    PERM_ADD_RECORD, PERM_DELETE_RECORD, PERM_MODIFY_RECORD, PERM_CHANGE_STATUS,
+};

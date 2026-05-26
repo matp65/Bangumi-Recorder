@@ -68,11 +68,14 @@ pub async fn regenerate_api_token(
         format!("{:x}", hasher.finalize())
     };
 
-    match sqlx::query!(
-        "UPDATE users SET api_token_hash = ? WHERE id = ?",
-        token_hash,
-        auth_user.user_id
+    // Create a new token entry in api_tokens table with all permissions
+    match sqlx::query(
+        "INSERT INTO api_tokens (user_id, name, token_hash, permissions) VALUES (?, ?, ?, ?)"
     )
+    .bind(auth_user.user_id)
+    .bind("Regenerated Token")
+    .bind(&token_hash)
+    .bind(u64::MAX as i64)
     .execute(&pool)
     .await
     {

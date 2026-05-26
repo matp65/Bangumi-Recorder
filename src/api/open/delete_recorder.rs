@@ -6,7 +6,7 @@ use axum::{
 use serde::Deserialize;
 use sqlx::mysql::MySqlPool;
 
-use super::api_token::require_api_token;
+use super::api_token::{require_token_with_perm, PERM_DELETE_RECORD, PERM_WRITE};
 use crate::auth_bearer::AuthUser;
 
 pub use crate::api::delete_recorder::DeleteRecorderResponse;
@@ -23,7 +23,8 @@ pub async fn delete_recorder(
     State(pool): State<MySqlPool>,
     Query(params): Query<DeleteRecorderQuery>,
 ) -> Result<Json<DeleteRecorderResponse>, StatusCode> {
-    let user_id = require_api_token(&pool, params.token.as_deref()).await?;
+    let token_info = require_token_with_perm(&pool, params.token.as_deref(), &[PERM_DELETE_RECORD, PERM_WRITE]).await?;
+    let user_id = token_info.user_id;
 
     Ok(crate::api::delete_recorder::delete_recorder(
         State(pool),

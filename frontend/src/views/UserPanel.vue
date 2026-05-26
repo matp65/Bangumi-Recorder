@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { api, type UserInfo } from '../api'
+import { api, type UserInfo, type ApiTokenItem, type PermissionLabel, type PermissionLabelsResponse } from '../api'
 import { useAuthStore } from '../stores/auth'
 import { Message } from '@arco-design/web-vue'
-import { IconCopy, IconRefresh } from '@arco-design/web-vue/es/icon'
+import { IconCopy, IconDelete, IconEdit, IconPlus, IconRefresh } from '@arco-design/web-vue/es/icon'
 
 const auth = useAuthStore()
-const apiToken = ref<string | null>(null)
-const loadingToken = ref(false)
 
 const userInfo = ref<UserInfo | null>(null)
 const loadingInfo = ref(true)
@@ -19,7 +17,42 @@ const oldPassword = ref('')
 const newPassword = ref('')
 const changingPassword = ref(false)
 
+// Token management
+const tokens = ref<ApiTokenItem[]>([])
+const loadingTokens = ref(false)
+const showCreateModal = ref(false)
+const showEditModal = ref(false)
+const editingTokenId = ref(0)
+const newTokenName = ref('')
+const newTokenPermissions = ref(0)
+const createdRawToken = ref('')
+const permissionLabels = ref<PermissionLabel[]>([])
+const permissionAllValue = ref(255)
+const creatingToken = ref(false)
+
+const editedTokenName = ref('')
+const editedTokenPermissions = ref(0)
+
+function togglePerm(perms: number, permValue: number): number {
+  const av = permissionAllValue.value
+  if (permValue === av) {
+    return (perms & av) === av ? 0 : av
+  }
+  const isSet = (perms & permValue) !== 0
+  return isSet ? (perms ^ permValue) : (perms | permValue)
+}
+
+function hasPerm(perms: number, permValue: number): boolean {
+  const av = permissionAllValue.value
+  if (permValue === av) return (perms & av) === av
+  return (perms & permValue) !== 0
+}
+
 onMounted(async () => {
+  await Promise.all([loadUserInfo(), loadTokens(), loadPermissionLabels()])
+})
+
+async function loadUserInfo() {
   loadingInfo.value = true
   try {
     const res = await api.getUserInfo()
@@ -33,29 +66,55 @@ onMounted(async () => {
   } finally {
     loadingInfo.value = false
   }
-})
+}
 
-  async function handleSaveInfo() {
-    savingInfo.value = true
-    try {
-      const res = await api.updateUserInfo(editNickname.value || undefined, editAvatar.value || undefined)
-      if (res.status === 0) {
-        Message.success('个人信息已更新')
-        if (userInfo.value) {
-          userInfo.value.nickname = editNickname.value
-          userInfo.value.avatar = editAvatar.value
-        }
-        auth.nickname = editNickname.value || null
-        auth.avatar = editAvatar.value || null
-      } else {
-        Message.error(res.message || '更新失败')
-      }
-    } catch {
-      Message.error('网络请求失败')
-    } finally {
-      savingInfo.value = false
+async function loadTokens() {
+  loadingTokens.value = true
+  try {
+    const res = await api.listTokens()
+    if (res.status === 0) {
+      tokens.value = res.data || []
     }
+  } catch {
+    Message.error('获取 Token 列表失败')
+  } finally {
+    loadingTokens.value = false
   }
+}
+
+async function loadPermissionLabels() {
+  try {
+    const res = await api.getPermissionLabels()
+    if (res.status === 0 && res.data) {
+      permissionLabels.value = res.data.labels || []
+      permissionAllValue.value = res.data.all_value || 255
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function handleSaveInfo() {
+  savingInfo.value = true
+  try {
+    const res = await api.updateUserInfo(editNickname.value || undefined, editAvatar.value || undefined)
+    if (res.status === 0) {
+      Message.success('个人信息已更新')
+      if (userInfo.value) {
+        userInfo.value.nickname = editNickname.value
+        userInfo.value.avatar = editAvatar.value
+      }
+      auth.nickname = editNickname.value || null
+      auth.avatar = editAvatar.value || null
+    } else {
+      Message.error(res.message || '更新失败')
+    }
+  } catch {
+    Message.error('网络请求失败')
+  } finally {
+    savingInfo.value = false
+  }
+}
 
 async function handleChangePassword() {
   if (!oldPassword.value || !newPassword.value) {
@@ -87,31 +146,102 @@ async function handleChangePassword() {
   }
 }
 
-async function handleRegenerate() {
-  loadingToken.value = true
+function openCreateModal() {
+  newTokenName.value = ''
+  newTokenPermissions.value = permissionLabels.value.length > 0 ? permissionLabels.value[0].value : 0
+  createdRawToken.value = ''
+  showCreateModal.value = true
+}
+
+async function handleCreateToken() {
+  if (!newTokenName.value.trim()) {
+    Message.warning('请输入 Token 名称')
+    return
+  }
+  if (newTokenPermissions.value === 0) {
+    Message.warning('请至少选择一个权限')
+    return
+  }
+  creatingToken.value = true
   try {
-    const res = await api.regenerateToken()
-    if (res.status === 0 && res.data?.api_token) {
-      apiToken.value = res.data.api_token
-      Message.success('API Token 已重新生成')
+    const res = await api.createToken(newTokenName.value.trim(), newTokenPermissions.value)
+    if (res.status === 0 && res.data) {
+      createdRawToken.value = res.data.raw_token
+      Message.success('Token 创建成功')
+      await loadTokens()
     } else {
-      Message.error(res.message || '生成失败')
+      Message.error(res.message || '创建失败')
     }
   } catch {
     Message.error('网络请求失败')
   } finally {
-    loadingToken.value = false
+    creatingToken.value = false
   }
 }
 
-async function handleCopy() {
-  if (!apiToken.value) return
+function openEditModal(token: ApiTokenItem) {
+  editingTokenId.value = token.id
+  editedTokenName.value = token.name
+  editedTokenPermissions.value = token.permissions
+  showEditModal.value = true
+}
+
+async function handleEditToken() {
+  if (!editedTokenName.value.trim()) {
+    Message.warning('请输入 Token 名称')
+    return
+  }
+  if (editedTokenPermissions.value === 0) {
+    Message.warning('请至少选择一个权限')
+    return
+  }
+  try {
+    const res = await api.updateToken(editingTokenId.value, {
+      name: editedTokenName.value.trim(),
+      permissions: editedTokenPermissions.value,
+    })
+    if (res.status === 0) {
+      Message.success('Token 已更新')
+      showEditModal.value = false
+      await loadTokens()
+    } else {
+      Message.error(res.message || '更新失败')
+    }
+  } catch {
+    Message.error('网络请求失败')
+  }
+}
+
+async function handleDeleteToken(id: number, name: string) {
+  try {
+    const res = await api.deleteToken(id)
+    if (res.status === 0) {
+      Message.success(`Token "${name}" 已删除`)
+      await loadTokens()
+    } else {
+      Message.error(res.message || '删除失败')
+    }
+  } catch {
+    Message.error('网络请求失败')
+  }
+}
+
+function permLabels(perms: number): string {
+  const av = permissionAllValue.value
+  if ((perms & av) === av) return 'Allow All'
+  const labels = permissionLabels.value
+    .filter(p => (perms & p.value) !== 0)
+    .map(p => p.label)
+  return labels.join(', ') || '-'
+}
+
+async function handleCopy(text: string) {
   try {
     if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(apiToken.value)
+      await navigator.clipboard.writeText(text)
     } else {
       const textarea = document.createElement('textarea')
-      textarea.value = apiToken.value
+      textarea.value = text
       textarea.style.position = 'fixed'
       textarea.style.opacity = '0'
       document.body.appendChild(textarea)
@@ -127,7 +257,7 @@ async function handleCopy() {
 </script>
 
 <template>
-  <div style="max-width: 600px">
+  <div style="max-width: 800px">
     <h2 style="font-size: 20px; color: #1d2129; margin-bottom: 24px">用户设置</h2>
 
     <a-spin :loading="loadingInfo">
@@ -177,37 +307,186 @@ async function handleCopy() {
     </a-spin>
 
     <a-card :bordered="false">
-      <template #title>API Token</template>
+      <template #title>API Token 管理</template>
       <template #extra>
-        <a-button type="primary" size="small" :loading="loadingToken" @click="handleRegenerate">
-          <template #icon><icon-refresh /></template>
-          重新生成
+        <a-button type="primary" size="small" @click="openCreateModal">
+          <template #icon><icon-plus /></template>
+          新建 Token
         </a-button>
       </template>
 
-      <div v-if="!apiToken" style="padding: 24px 0; text-align: center; color: #86909c">
-        <p>API Token 仅在生成时显示一次，请点击「重新生成」来获取新的 Token</p>
-        <p style="font-size: 12px; margin-top: 8px; color: #c9cdd4">用于 Open API 鉴权，使用 ?token= 参数传递</p>
-      </div>
-
-      <div v-else>
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px">
-          <a-tag color="green">新生成的 Token</a-tag>
+      <a-spin :loading="loadingTokens">
+        <a-table
+          v-if="tokens.length > 0"
+          :data="tokens"
+          :pagination="false"
+          :bordered="false"
+          style="margin-top: 8px"
+        >
+          <template #columns>
+            <a-table-column title="名称" data-index="name" :width="140" />
+            <a-table-column title="权限" :width="260">
+              <template #cell="{ record }">
+                <span style="font-size: 12px; color: #4e5969">{{ permLabels(record.permissions) }}</span>
+              </template>
+            </a-table-column>
+            <a-table-column title="状态" :width="70">
+              <template #cell="{ record }">
+                <a-tag :color="record.is_active ? 'green' : 'red'">{{ record.is_active ? '启用' : '禁用' }}</a-tag>
+              </template>
+            </a-table-column>
+            <a-table-column title="最后使用" :width="150">
+              <template #cell="{ record }">
+                <span style="font-size: 12px; color: #86909c">{{ record.last_used_at || '从未使用' }}</span>
+              </template>
+            </a-table-column>
+            <a-table-column title="创建时间" :width="150">
+              <template #cell="{ record }">
+                <span style="font-size: 12px; color: #86909c">{{ record.created_at }}</span>
+              </template>
+            </a-table-column>
+            <a-table-column title="操作" :width="100">
+              <template #cell="{ record }">
+                <a-button type="text" size="small" @click="openEditModal(record)">
+                  <template #icon><icon-edit /></template>
+                </a-button>
+                <a-button type="text" size="small" status="danger" @click="handleDeleteToken(record.id, record.name)">
+                  <template #icon><icon-delete /></template>
+                </a-button>
+              </template>
+            </a-table-column>
+          </template>
+        </a-table>
+        <div v-else style="padding: 24px 0; text-align: center; color: #86909c">
+          <p>暂无 API Token，请点击「新建 Token」创建</p>
         </div>
-        <div style="display: flex; align-items: center; gap: 8px">
+      </a-spin>
+    </a-card>
+
+    <!-- Create Token Modal -->
+    <a-modal
+      v-model:visible="showCreateModal"
+      title="新建 API Token"
+      :footer="false"
+      :mask-closable="false"
+      width="520px"
+    >
+      <div v-if="!createdRawToken">
+        <a-form layout="vertical" :model="{}">
+          <a-form-item label="Token 名称">
+            <a-input v-model="newTokenName" placeholder="为 Token 起个名字，如「脚本用」" />
+          </a-form-item>
+          <a-form-item label="权限设置">
+            <div style="display: flex; flex-direction: column; gap: 8px">
+              <div
+                style="display: flex; align-items: flex-start; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid #f2f3f5; margin-bottom: 4px"
+              >
+                <a-checkbox
+                  :checked="hasPerm(newTokenPermissions, permissionAllValue)"
+                  @change="newTokenPermissions = togglePerm(newTokenPermissions, permissionAllValue)"
+                />
+                <div>
+                  <div style="font-size: 14px; font-weight: 500">Allow All</div>
+                  <div style="font-size: 12px; color: #86909c">Grant all permissions</div>
+                </div>
+              </div>
+              <div
+                v-for="p in permissionLabels"
+                :key="p.value"
+                style="display: flex; align-items: flex-start; gap: 8px"
+              >
+                <a-checkbox
+                  :checked="hasPerm(newTokenPermissions, p.value)"
+                  @change="newTokenPermissions = togglePerm(newTokenPermissions, p.value)"
+                />
+                <div>
+                  <div style="font-size: 14px; font-weight: 500">{{ p.label }}</div>
+                  <div v-if="p.description" style="font-size: 12px; color: #86909c">{{ p.description }}</div>
+                </div>
+              </div>
+            </div>
+          </a-form-item>
+          <a-form-item>
+            <div style="display: flex; gap: 8px">
+              <a-button @click="showCreateModal = false">取消</a-button>
+              <a-button type="primary" :loading="creatingToken" @click="handleCreateToken">创建</a-button>
+            </div>
+          </a-form-item>
+        </a-form>
+      </div>
+      <div v-else>
+        <a-result status="success" title="Token 创建成功">
+          <template #subtitle>
+            <div style="font-size: 13px; color: #e6a23c; margin-bottom: 8px">
+              请立即复制并妥善保存，关闭后将无法再次查看完整 Token
+            </div>
+          </template>
+        </a-result>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px">
           <a-input
-            :model-value="apiToken"
+            :model-value="createdRawToken"
             readonly
             style="font-family: monospace; font-size: 13px"
           />
-          <a-button @click="handleCopy">
+          <a-button @click="handleCopy(createdRawToken)">
             <template #icon><icon-copy /></template>
           </a-button>
         </div>
-        <div style="margin-top: 12px; font-size: 12px; color: #e6a23c">
-          请立即复制并妥善保存，关闭页面后将无法再次查看
+        <div style="display: flex; gap: 8px">
+          <a-button @click="showCreateModal = false">关闭</a-button>
         </div>
       </div>
-    </a-card>
+    </a-modal>
+
+    <!-- Edit Token Modal -->
+    <a-modal
+      v-model:visible="showEditModal"
+      title="编辑 Token"
+      :footer="false"
+      :mask-closable="false"
+      width="520px"
+    >
+      <a-form layout="vertical" :model="{}">
+        <a-form-item label="Token 名称">
+          <a-input v-model="editedTokenName" placeholder="Token 名称" />
+        </a-form-item>
+        <a-form-item label="权限设置">
+          <div style="display: flex; flex-direction: column; gap: 8px">
+            <div
+              style="display: flex; align-items: flex-start; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid #f2f3f5; margin-bottom: 4px"
+            >
+              <a-checkbox
+                :checked="hasPerm(editedTokenPermissions, permissionAllValue)"
+                @change="editedTokenPermissions = togglePerm(editedTokenPermissions, permissionAllValue)"
+              />
+              <div>
+                <div style="font-size: 14px; font-weight: 500">Allow All</div>
+                <div style="font-size: 12px; color: #86909c">Grant all permissions</div>
+              </div>
+            </div>
+            <div
+              v-for="p in permissionLabels"
+              :key="p.value"
+              style="display: flex; align-items: flex-start; gap: 8px"
+            >
+              <a-checkbox
+                :checked="hasPerm(editedTokenPermissions, p.value)"
+                @change="editedTokenPermissions = togglePerm(editedTokenPermissions, p.value)"
+              />
+              <div>
+                <div style="font-size: 14px; font-weight: 500">{{ p.label }}</div>
+                <div v-if="p.description" style="font-size: 12px; color: #86909c">{{ p.description }}</div>
+              </div>
+            </div>
+          </div>
+        </a-form-item>
+        <a-form-item>
+          <div style="display: flex; gap: 8px">
+            <a-button @click="showEditModal = false">取消</a-button>
+            <a-button type="primary" @click="handleEditToken">保存</a-button>
+          </div>
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>

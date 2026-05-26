@@ -159,6 +159,34 @@ export interface LocalSearchResult {
   page_size: number
 }
 
+export interface PermissionLabel {
+  label: string
+  value: number
+  description: string
+}
+
+export interface PermissionLabelsResponse {
+  labels: PermissionLabel[]
+  all_value: number
+}
+
+export interface ApiTokenItem {
+  id: number
+  name: string
+  permissions: number
+  is_active: boolean
+  last_used_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateTokenData {
+  id: number
+  name: string
+  raw_token: string
+  permissions: number
+}
+
 // ---- v2 API endpoints ----
 
 export const api = {
@@ -270,5 +298,34 @@ export const api = {
       method: 'PUT',
       body: { old_password: oldPassword, new_password: newPassword },
     })
+  },
+
+  // API Token management (multi-token)
+  listTokens() {
+    return request<ApiResponse<ApiTokenItem[]>>('/api/v2/tokens')
+  },
+
+  createToken(name: string, permissions: number) {
+    return request<ApiResponse<CreateTokenData>>('/api/v2/tokens', {
+      method: 'POST',
+      body: { name, permissions },
+    })
+  },
+
+  updateToken(id: number, data: { name?: string; permissions?: number; is_active?: boolean }) {
+    return request<ApiResponse<null>>(`/api/v2/tokens/${id}`, {
+      method: 'PUT',
+      body: data,
+    })
+  },
+
+  deleteToken(id: number) {
+    return request<ApiResponse<null>>(`/api/v2/tokens/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  getPermissionLabels() {
+    return request<ApiResponse<PermissionLabelsResponse>>('/api/v2/tokens/permissions')
   },
 }

@@ -3,16 +3,16 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
 
-use crate::api::open::api_token::require_api_token;
+use crate::api::open::api_token::{require_token_with_perm, PERM_READ, PERM_WRITE};
 use crate::api::v2::search::{
     search_bangumi as v2_search_bangumi,
     get_bangumi as v2_get_bangumi,
     search_local as v2_search_local,
 };
-use crate::api::v2::response::{unauthorized as v2_unauthorized, ApiResponse};
+use crate::api::v2::response::{unauthorized as v2_unauthorized, forbidden as v2_forbidden, ApiResponse};
 
 pub use crate::api::search::BangumiItem;
 pub use crate::api::v2::search::LocalSearchResult;
@@ -39,15 +39,23 @@ pub struct LocalSearchParams {
     pub token: Option<String>,
 }
 
+async fn verify_token<T: Serialize>(pool: &MySqlPool, token: Option<&str>) -> Result<(), (StatusCode, Json<ApiResponse<T>>)> {
+    match require_token_with_perm(pool, token, &[PERM_READ, PERM_WRITE]).await {
+        Ok(_) => Ok(()),
+        Err(StatusCode::UNAUTHORIZED) => Err(v2_unauthorized("Invalid API token")),
+        Err(StatusCode::FORBIDDEN) => Err(v2_forbidden("Insufficient permissions")),
+        Err(_) => Err(v2_unauthorized("Invalid API token")),
+    }
+}
+
 /// GET /api/v2/open/search?q=keyword&page=1&force=true&token=xxx
 pub async fn search_bangumi(
     State(pool): State<MySqlPool>,
     Query(params): Query<SearchQuery>,
 ) -> (StatusCode, Json<ApiResponse<Vec<crate::api::search::BangumiSearchItem>>>) {
-    let _uid = match require_api_token(&pool, params.token.as_deref()).await {
-        Ok(uid) => uid,
-        Err(_) => return v2_unauthorized("Invalid API token"),
-    };
+    if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
+        return e;
+    }
 
     v2_search_bangumi(
         State(pool),
@@ -65,10 +73,9 @@ pub async fn get_bangumi(
     Path(id): Path<u32>,
     Query(params): Query<BangumiQuery>,
 ) -> (StatusCode, Json<ApiResponse<BangumiItem>>) {
-    let _uid = match require_api_token(&pool, params.token.as_deref()).await {
-        Ok(uid) => uid,
-        Err(_) => return v2_unauthorized("Invalid API token"),
-    };
+    if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
+        return e;
+    }
 
     v2_get_bangumi(
         State(pool),
@@ -85,10 +92,9 @@ pub async fn search_local(
     State(pool): State<MySqlPool>,
     Query(params): Query<LocalSearchParams>,
 ) -> (StatusCode, Json<ApiResponse<LocalSearchResult>>) {
-    let _uid = match require_api_token(&pool, params.token.as_deref()).await {
-        Ok(uid) => uid,
-        Err(_) => return v2_unauthorized("Invalid API token"),
-    };
+    if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
+        return e;
+    }
 
     v2_search_local(
         State(pool),

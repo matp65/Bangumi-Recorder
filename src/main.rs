@@ -200,6 +200,10 @@ async fn main() {
         .route("/me", get(api::v2::user::get_info).patch(api::v2::user::update_info))
         .route("/me/password", put(api::v2::user::update_password))
         .route("/me/token", post(api::v2::user::regenerate_api_token))
+        // API Token management (multi-token)
+        .route("/tokens", get(api::v2::token::list_tokens).post(api::v2::token::create_token))
+        .route("/tokens/:id", put(api::v2::token::update_token).delete(api::v2::token::delete_token))
+        .route("/tokens/permissions", get(api::v2::token::permission_labels))
         .with_state(pool.clone())
         .layer(middleware::from_fn(move |req, next| {
             let jwt_secret = jwt_secret_v2.clone();
@@ -240,7 +244,7 @@ async fn main() {
         .with_state(pool)
         .layer(
             CorsLayer::permissive()
-                .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+                .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS])
         );
 
     log::info!("{}", VERSION);
