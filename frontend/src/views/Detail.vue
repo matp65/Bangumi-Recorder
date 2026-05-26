@@ -3,7 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, type BangumiItem, type GetRecordData, type EpisodeItem } from '../api'
 import { Message, Modal } from '@arco-design/web-vue'
-import { IconArrowLeft, IconDelete, IconDown, IconUp } from '@arco-design/web-vue/es/icon'
+import { IconArrowLeft, IconDelete, IconDown, IconUp, IconRefresh } from '@arco-design/web-vue/es/icon'
 
 const props = defineProps<{ bangumi_id: string }>()
 const router = useRouter()
@@ -45,15 +45,15 @@ const episodeExpanded = ref(false)
 const episodeList = ref<EpisodeItem[]>([])
 const episodeLoading = ref(false)
 
-async function loadEpisodes() {
-  if (episodeList.value.length > 0) {
+async function loadEpisodes(force = false) {
+  if (!force && episodeList.value.length > 0) {
     episodeExpanded.value = !episodeExpanded.value
     return
   }
   episodeLoading.value = true
   episodeExpanded.value = true
   try {
-    const res = await api.listEpisodes(parseInt(props.bangumi_id))
+    const res = await api.listEpisodes(parseInt(props.bangumi_id), force)
     if (res.status === 0 && res.data) {
       episodeList.value = res.data
     }
@@ -318,12 +318,17 @@ onMounted(fetchData)
 
           <a-divider />
 
-          <div>
-            <a-button type="text" size="large" @click="loadEpisodes">
+          <div style="display: flex; align-items: center; gap: 8px">
+            <a-button type="text" size="large" @click="loadEpisodes()">
               {{ episodeExpanded ? '收起剧集列表' : '展开剧集列表' }}
               <icon-down v-if="!episodeExpanded" />
               <icon-up v-else />
             </a-button>
+            <a-tooltip content="从 bgm.tv 刷新剧集数据">
+              <a-button type="text" size="small" @click="loadEpisodes(true)">
+                <template #icon><icon-refresh /></template>
+              </a-button>
+            </a-tooltip>
           </div>
 
           <a-spin :loading="episodeLoading">

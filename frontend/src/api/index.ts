@@ -386,8 +386,9 @@ export const api = {
   },
 
   // Per-user episode tracking (JWT)
-  listEpisodes(bangumiId: number) {
-    return request<ApiResponse<EpisodeItem[]>>(`/api/v2/records/bangumi/${bangumiId}/episodes`)
+  listEpisodes(bangumiId: number, force = false) {
+    const params = force ? `?force=true` : ''
+    return request<ApiResponse<EpisodeItem[]>>(`/api/v2/records/bangumi/${bangumiId}/episodes${params}`)
   },
 
   updateEpisode(bangumiId: number, ordinal: number, data: { watched?: boolean; progress_seconds?: number; duration_seconds?: number }) {

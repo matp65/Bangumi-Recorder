@@ -369,7 +369,7 @@ paths:
 
   /api/v2/bangumi/{id}/episodes:
     get:
-      summary: 获取剧集元数据列表（爬取 bgm.tv 并缓存）
+      summary: 获取剧集元数据列表（爬取 bgm.tv 并缓存，支持 ?force=true 强制刷新）
       tags: [搜索]
       security: [{ BearerJWT: [] }]
       parameters:
@@ -378,6 +378,10 @@ paths:
           required: true
           schema: { type: integer }
           description: Bangumi 外部 ID
+        - name: force
+          in: query
+          schema: { type: boolean, default: false }
+          description: 强制从 bgm.tv 重新爬取，跳过缓存
       responses:
         "200":
           description: 剧集元数据列表
@@ -610,6 +614,10 @@ paths:
           required: true
           schema: { type: integer }
           description: Bangumi 外部 ID
+        - name: force
+          in: query
+          schema: { type: boolean, default: false }
+          description: 强制从 bgm.tv 重新爬取剧集元数据（跳过 24h 缓存）
       responses:
         "200":
           description: 单集列表，每集包含元数据和用户进度
@@ -889,6 +897,10 @@ paths:
           in: path
           required: true
           schema: { type: integer }
+        - name: force
+          in: query
+          schema: { type: boolean, default: false }
+          description: 强制从 bgm.tv 重新爬取
         - name: token
           in: query
           required: true
@@ -904,13 +916,17 @@ paths:
   # ────────────────────────────── 开放接口：单集追踪 ──────────────────
   /api/v2/open/episodes/{bangumi_id}:
     get:
-      summary: 获取单集追踪列表（API Token 鉴权）
+      summary: 获取单集追踪列表（API Token 鉴权，支持 ?force=true 强制刷新缓存）
       tags: [开放接口]
       parameters:
         - name: bangumi_id
           in: path
           required: true
           schema: { type: integer }
+        - name: force
+          in: query
+          schema: { type: boolean, default: false }
+          description: 强制从 bgm.tv 重新爬取剧集元数据
         - name: token
           in: query
           required: true

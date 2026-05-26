@@ -8,12 +8,13 @@ use sqlx::mysql::MySqlPool;
 
 use crate::api::open::api_token::{require_token_with_perm, PERM_READ, PERM_WRITE};
 use crate::auth_bearer::AuthUser;
-use crate::api::v2::episodes::{EpisodeItem, UpdateEpisodeBody};
+use crate::api::v2::episodes::{EpisodeItem, UpdateEpisodeBody, ForceEpisodesQuery};
 use crate::api::v2::response::{unauthorized, ApiResponse};
 
 #[derive(serde::Deserialize)]
 pub struct OpenTokenQuery {
     pub token: Option<String>,
+    pub force: Option<bool>,
 }
 
 fn forbidden<T: Serialize>(msg: &str) -> (StatusCode, Json<ApiResponse<T>>) {
@@ -44,6 +45,7 @@ pub async fn list_episodes(
         State(pool),
         Extension(AuthUser { user_id: token_info.user_id }),
         Path(bangumi_id),
+        Query(ForceEpisodesQuery { force: query.force }),
     )
     .await
 }

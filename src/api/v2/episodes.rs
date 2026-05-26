@@ -1,11 +1,11 @@
 use axum::{
-    extract::{Extension, Path, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{NaiveDate, NaiveDateTime, Utc};
 use reqwest::Client;
 use scraper::{Html, Selector};
 
@@ -33,12 +33,19 @@ pub struct UpdateEpisodeBody {
     pub duration_seconds: Option<i32>,
 }
 
+#[derive(Deserialize)]
+pub struct ForceEpisodesQuery {
+    pub force: Option<bool>,
+}
+
 pub async fn list_episodes(
     State(pool): State<MySqlPool>,
     Extension(auth_user): Extension<AuthUser>,
     Path(bangumi_id): Path<u32>,
+    Query(query): Query<ForceEpisodesQuery>,
 ) -> (StatusCode, Json<ApiResponse<Vec<EpisodeItem>>>) {
     let bangumi_id_str = bangumi_id.to_string();
+    let force = query.force.unwrap_or(false);
 
     let recording = match sqlx::query!(
         r#"
@@ -78,7 +85,7 @@ pub async fn list_episodes(
         }
     };
 
-    ensure_episode_metadata_cached(&pool, easy_id, bangumi_id_str.as_str()).await;
+    ensure_episode_metadata_cached(&pool, easy_id, bangumi_id_str.as_str(), force).await;
 
     let metadata = match sqlx::query!(
         r#"
@@ -118,19 +125,28 @@ pub async fn list_episodes(
     };
 
     let user_map: std::collections::HashMap<i32, _> = user_records
-        .into_iter()
+        .iter()
         .map(|r| (r.ordinal, r))
         .collect();
 
+    let metadata_map: std::collections::HashMap<i32, _> = metadata
+        .into_iter()
+        .map(|m| (m.ordinal, m))
+        .collect();
+
+    let mut seen_ordinals: std::collections::HashSet<i32> = std::collections::HashSet::new();
     let mut episodes: Vec<EpisodeItem> = Vec::new();
-    for m in metadata {
-        let user_state = user_map.get(&m.ordinal);
+
+    // First pass: metadata entries merged with user records
+    for (&ordinal, m) in &metadata_map {
+        let user_state = user_map.get(&ordinal);
+        seen_ordinals.insert(ordinal);
         episodes.push(EpisodeItem {
-            ordinal: m.ordinal,
-            title: m.title,
-            name_cn: m.name_cn,
+            ordinal,
+            title: m.title.clone(),
+            name_cn: m.name_cn.clone(),
             airdate: m.airdate,
-            duration: m.duration,
+            duration: m.duration.clone(),
             watched: user_state.map(|u| u.watched != 0).unwrap_or(false),
             progress_seconds: user_state.and_then(|u| u.progress_seconds),
             duration_seconds: user_state.and_then(|u| u.duration_seconds),
@@ -138,6 +154,27 @@ pub async fn list_episodes(
             updated_at: user_state.map(|u| u.updated_at),
         });
     }
+
+    // Second pass: user records without metadata (e.g. scraping hasn't run yet)
+    for r in &user_records {
+        if seen_ordinals.contains(&r.ordinal) {
+            continue;
+        }
+        episodes.push(EpisodeItem {
+            ordinal: r.ordinal,
+            title: None,
+            name_cn: None,
+            airdate: None,
+            duration: None,
+            watched: r.watched != 0,
+            progress_seconds: r.progress_seconds,
+            duration_seconds: r.duration_seconds,
+            completed_at: r.completed_at,
+            updated_at: Some(r.updated_at),
+        });
+    }
+
+    episodes.sort_by_key(|e| e.ordinal);
 
     success(episodes)
 }
@@ -446,17 +483,25 @@ pub fn parse_prg_list_episodes(html: &str) -> Vec<ParsedEpisode> {
     episodes
 }
 
-async fn ensure_episode_metadata_cached(pool: &MySqlPool, easy_id: u32, bangumi_id: &str) {
-    let cached = sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM bangumi_episodes WHERE bangumi_easy_id = ?",
-        easy_id
-    )
-    .fetch_one(pool)
-    .await
-    .unwrap_or(0);
+pub(crate) async fn ensure_episode_metadata_cached(pool: &MySqlPool, easy_id: u32, bangumi_id: &str, force: bool) {
+    if !force {
+        let max_updated = sqlx::query_scalar!(
+            "SELECT MAX(updated_at) FROM bangumi_episodes WHERE bangumi_easy_id = ?",
+            easy_id
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(None);
 
-    if cached > 0 {
-        return;
+        let ttl = chrono::Duration::hours(24);
+        let needs_refresh = match max_updated {
+            Some(ts) => Utc::now().naive_utc() - ts > ttl,
+            None => true,
+        };
+
+        if !needs_refresh {
+            return;
+        }
     }
 
     let url = format!("https://bgm.tv/subject/{}", bangumi_id);

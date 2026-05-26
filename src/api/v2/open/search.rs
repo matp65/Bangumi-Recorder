@@ -91,9 +91,10 @@ pub async fn get_bangumi(
 #[derive(Deserialize)]
 pub struct EpisodeListQuery {
     pub token: Option<String>,
+    pub force: Option<bool>,
 }
 
-/// GET /api/v2/open/bangumi/:id/episodes?token=xxx
+/// GET /api/v2/open/bangumi/:id/episodes?force=true&token=xxx
 pub async fn get_bangumi_episodes(
     State(pool): State<MySqlPool>,
     Path(id): Path<u32>,
@@ -106,6 +107,9 @@ pub async fn get_bangumi_episodes(
     crate::api::v2::search::get_bangumi_episodes(
         State(pool),
         Path(id),
+        Query(crate::api::v2::search::EpisodesForceQuery {
+            force: params.force,
+        }),
     )
     .await
 }

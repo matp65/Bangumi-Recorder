@@ -15,7 +15,12 @@ use crate::api::search::{
     search_local as v1_search_local,
 };
 use super::response::{success, not_found, internal_error, bad_request, ApiResponse};
-use super::episodes::parse_prg_list_episodes;
+use super::episodes::ensure_episode_metadata_cached;
+
+#[derive(Deserialize)]
+pub struct EpisodesForceQuery {
+    pub force: Option<bool>,
+}
 
 pub use crate::api::search::BangumiItem;
 
@@ -154,8 +159,10 @@ pub struct BangumiEpisodeMeta {
 pub async fn get_bangumi_episodes(
     State(pool): State<MySqlPool>,
     Path(id): Path<u32>,
+    Query(query): Query<EpisodesForceQuery>,
 ) -> (StatusCode, Json<ApiResponse<Vec<BangumiEpisodeMeta>>>) {
     let id_str = id.to_string();
+    let force = query.force.unwrap_or(false);
 
     let easy_id = match sqlx::query_scalar!(
         "SELECT id FROM bangumi_info_easy WHERE external_id = ?",
@@ -172,19 +179,7 @@ pub async fn get_bangumi_episodes(
         }
     };
 
-    let cached = sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM bangumi_episodes WHERE bangumi_easy_id = ?",
-        easy_id
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap_or(0);
-
-    if cached == 0 {
-        if let Err(_) = scrape_and_cache_episodes(&pool, easy_id, &id_str).await {
-            return internal_error("Failed to scrape episode data");
-        }
-    }
+    ensure_episode_metadata_cached(&pool, easy_id, &id_str, force).await;
 
     let rows = sqlx::query!(
         r#"
@@ -217,51 +212,6 @@ pub async fn get_bangumi_episodes(
             internal_error("Database error")
         }
     }
-}
-
-/// Scrape bgm.tv episode list and cache into bangumi_episodes.
-/// Used by both the JWT and open endpoints.
-pub async fn scrape_and_cache_episodes(
-    pool: &MySqlPool,
-    easy_id: u32,
-    bangumi_id: &str,
-) -> Result<(), ()> {
-    let url = format!("https://bgm.tv/subject/{}", bangumi_id);
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(&url)
-        .header("User-Agent", "Mozilla/5.0")
-        .send()
-        .await
-        .map_err(|_| ())?;
-
-    let html = resp.text().await.map_err(|_| ())?;
-
-    let episodes = parse_prg_list_episodes(&html);
-
-    for ep in episodes {
-        let _ = sqlx::query!(
-            r#"
-            INSERT INTO bangumi_episodes (bangumi_easy_id, ordinal, title, name_cn, airdate, duration)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE
-                title = VALUES(title),
-                name_cn = VALUES(name_cn),
-                airdate = VALUES(airdate),
-                duration = VALUES(duration)
-            "#,
-            easy_id,
-            ep.ordinal,
-            ep.title,
-            ep.name_cn,
-            ep.airdate,
-            ep.duration
-        )
-        .execute(pool)
-        .await;
-    }
-
-    Ok(())
 }
 
 /// GET /api/v2/search/local?q=keyword&page=1&page_size=20

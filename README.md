@@ -187,8 +187,8 @@ cargo build --release
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/v2/bangumi/:id/episodes` | 获取剧集元数据列表（爬取 bgm.tv 并缓存） |
-| GET | `/api/v2/records/bangumi/:id/episodes` | 获取单集追踪状态（含元数据合并） |
+| GET | `/api/v2/bangumi/:id/episodes` | 获取剧集元数据列表（爬取 bgm.tv 并缓存，24h TTL，`?force=true` 强制刷新） |
+| GET | `/api/v2/records/bangumi/:id/episodes` | 获取单集追踪状态（含元数据合并，`?force=true` 强制刷新缓存） |
 | PATCH | `/api/v2/records/bangumi/:id/episodes/:ordinal` | 更新单集进度 `{"watched","progress_seconds","duration_seconds"}` |
 
 更新单集时会自动同步主表 `recorder` 字段：集数 = max(ordinal where watched=1)，时间 = max(progress_seconds) 格式化为 mm:ss。
@@ -217,6 +217,11 @@ cargo build --release
 | DELETE | `/api/v2/open/records/custom/:id?token=` | Delete Record / Read-Write | 删除自定义记录 |
 | GET | `/api/v2/open/search?q=Re0&token=` | Read-only / Read-Write | 在线搜索 |
 | GET | `/api/v2/open/bangumi/:id?force=true&token=` | Read-only / Read-Write | 获取详情（24h 缓存） |
+| GET | `/api/v2/open/bangumi/:id/episodes?force=true&token=` | Read-only / Read-Write | 剧集元数据 |
+| GET | `/api/v2/open/episodes/:bangumi_id?force=true&token=` | Read-only / Read-Write | 单集追踪列表 |
+| PATCH | `/api/v2/open/episodes/:bangumi_id/:ordinal?token=` | Modify Record / Read-Write | 更新单集进度 |
+| POST | `/api/v2/open/sync?token=` | Read-Write | 批量同步 |
+| GET | `/api/v2/open/sync/incremental?since=&token=` | Read-only / Read-Write | 增量同步 |
 | GET | `/api/v2/open/search/local?q=...&token=` | Read-only / Read-Write | 本地搜索 |
 
 ### v1（向下兼容）
