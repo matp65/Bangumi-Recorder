@@ -109,6 +109,7 @@ export interface RecorderItem {
 
 export interface EpisodeItem {
   ordinal: number
+  label: string | null
   title: string | null
   name_cn: string | null
   airdate: string | null

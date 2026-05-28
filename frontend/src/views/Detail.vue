@@ -344,10 +344,10 @@ onMounted(fetchData)
               >
                 <a-checkbox :model-value="ep.watched" @click.stop="toggleWatched(ep)" />
                 <span style="min-width: 32px; font-weight: 600; color: #1d2129">
-                  {{ ep.ordinal }}
+                  {{ ep.label || ep.ordinal }}
                 </span>
                 <span style="flex: 1; color: #4e5969; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-                  {{ ep.name_cn || ep.title || `第 ${ep.ordinal} 集` }}
+                  {{ ep.name_cn || ep.title || `第 ${ep.label || ep.ordinal} 集` }}
                 </span>
                 <span v-if="ep.progress_seconds != null && ep.progress_seconds > 0" style="color: #86909c; font-size: 13px">
                   {{ formatTime(ep.progress_seconds) }}

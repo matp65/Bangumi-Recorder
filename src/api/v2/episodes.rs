@@ -16,6 +16,7 @@ use super::response::{success, not_found, internal_error, ApiResponse};
 #[derive(Serialize, Debug)]
 pub struct EpisodeItem {
     pub ordinal: i32,
+    pub label: Option<String>,
     pub title: Option<String>,
     pub name_cn: Option<String>,
     pub airdate: Option<NaiveDate>,
@@ -90,7 +91,7 @@ pub async fn list_episodes(
 
     let metadata = match sqlx::query!(
         r#"
-        SELECT ordinal, title, name_cn, airdate, duration
+        SELECT ordinal, ep_label, title, name_cn, airdate, duration
         FROM bangumi_episodes
         WHERE bangumi_easy_id = ?
         ORDER BY ordinal ASC
@@ -144,6 +145,7 @@ pub async fn list_episodes(
         seen_ordinals.insert(ordinal);
         episodes.push(EpisodeItem {
             ordinal,
+            label: m.ep_label.clone(),
             title: m.title.clone(),
             name_cn: m.name_cn.clone(),
             airdate: m.airdate,
@@ -163,6 +165,7 @@ pub async fn list_episodes(
         }
         episodes.push(EpisodeItem {
             ordinal: r.ordinal,
+            label: None,
             title: None,
             name_cn: None,
             airdate: None,
@@ -258,6 +261,7 @@ pub async fn update_episode(
     {
         Ok(Some(r)) => EpisodeItem {
             ordinal: r.ordinal,
+            label: None,
             title: None,
             name_cn: None,
             airdate: None,
@@ -333,6 +337,7 @@ pub fn format_progress_seconds(sec: i32) -> String {
 pub struct ParsedEpisode {
     pub ordinal: i32,
     pub ep_id: String,
+    pub label: String,
     pub title: Option<String>,
     pub name_cn: Option<String>,
     pub airdate: Option<NaiveDate>,
@@ -355,20 +360,22 @@ fn extract_time_hms(s: &str) -> Option<String> {
     None
 }
 
-/// Parse bangumi subject page HTML to extract episode metadata from `ul.prg_list` and `div.prg_popup`.
-/// Skips `li.subtitle` entries (e.g. SP, OP, ED).
-pub fn parse_prg_list_episodes(html: &str) -> Vec<ParsedEpisode> {
+/// Parse bangumi /ep page HTML to extract episode metadata from `ul.line_list > li`.
+/// Handles both TV (regular + SP episodes) and 剧场版 (movie) formats.
+/// SP episodes are stored with negative ordinals (SP1 -> -1) but expose labels like "SP1".
+pub fn parse_ep_page_episodes(html: &str) -> Vec<ParsedEpisode> {
     let document = Html::parse_document(html);
 
-    let li_sel = Selector::parse("ul.prg_list > li").unwrap();
-    let a_sel = Selector::parse("a").unwrap();
-    let popup_sel = Selector::parse("div.prg_popup").unwrap();
-    let tip_sel = Selector::parse("span.tip").unwrap();
+    let li_sel = Selector::parse("ul.line_list > li").unwrap();
+    let a_sel = Selector::parse("h6 a").unwrap();
+    let tip_sel = Selector::parse("h6 span.tip").unwrap();
+    let small_sel = Selector::parse("small.grey").unwrap();
 
-    let mut from_list: Vec<ParsedEpisode> = Vec::new();
+    let mut episodes = Vec::new();
 
     for li in document.select(&li_sel) {
-        if li.value().classes().any(|c| c == "subtitle") {
+        // Skip category header rows (li.cat), e.g. "本篇", "特别篇"
+        if li.value().classes().any(|c| c == "cat") {
             continue;
         }
 
@@ -379,110 +386,108 @@ pub fn parse_prg_list_episodes(html: &str) -> Vec<ParsedEpisode> {
 
         let href = a.value().attr("href").unwrap_or("");
         let ep_id = href.strip_prefix("/ep/").unwrap_or("").to_string();
-        let title_attr = a.value().attr("title").unwrap_or("");
-        let text_content = a.text().collect::<String>().trim().to_string();
-
-        let ordinal = text_content.parse::<i32>().ok().or_else(|| {
-            let trimmed = title_attr.trim();
-            if let Some(rest) = trimmed.strip_prefix("ep.").or_else(|| trimmed.strip_prefix("EP.")) {
-                rest.split_whitespace().next().and_then(|n| n.parse::<i32>().ok())
-            } else {
-                None
-            }
-        });
-
-        let ordinal = match ordinal {
-            Some(o) => o,
-            None => continue,
-        };
-
-        let title = if title_attr.is_empty() {
-            None
-        } else {
-            let trimmed = title_attr.trim();
-            if let Some(rest) = trimmed.strip_prefix("ep.").or_else(|| trimmed.strip_prefix("EP.")) {
-                let rest = rest.trim();
-                if let Some(pos) = rest.find(|c: char| c == ' ' || c == '\u{3000}') {
-                    Some(rest[pos..].trim().to_string())
-                } else {
-                    Some(rest.to_string())
-                }
-            } else {
-                Some(trimmed.to_string())
-            }
-        };
-
-        from_list.push(ParsedEpisode {
-            ordinal,
-            ep_id,
-            title,
-            name_cn: None,
-            airdate: None,
-            duration: None,
-        });
-    }
-
-    let mut popup_map: std::collections::HashMap<String, (Option<String>, Option<NaiveDate>, Option<String>)> = std::collections::HashMap::new();
-
-    for popup in document.select(&popup_sel) {
-        let id = popup.value().id().unwrap_or("");
-        let ep_id = id.strip_prefix("prginfo_").unwrap_or("").to_string();
         if ep_id.is_empty() {
             continue;
         }
 
-        let tip_text = popup
-            .select(&tip_sel)
-            .next()
-            .map(|s| s.text().collect::<String>())
-            .unwrap_or_default();
+        let a_text = a.text().collect::<String>().trim().to_string();
+        // a_text examples: "1.鳥白島へようこそ" or "SP1.劇場編集版 久島鴎編"
 
-        let mut name_cn: Option<String> = None;
-        let mut airdate: Option<NaiveDate> = None;
-        let mut duration: Option<String> = None;
-
-        // tip_text is concatenated text without <br /> separators, e.g.:
-        // "中文标题: 初始的终结与结束的开始首播: 2020-01-01时长: 00:52:40讨论 (+20)"
-        // Extract fields by finding each prefix and slicing to the next prefix or end.
-        let prefixes = ["中文标题:", "首播:", "时长:"];
-        for (i, prefix) in prefixes.iter().enumerate() {
-            if let Some(start) = tip_text.find(prefix) {
-                let val_start = start + prefix.len();
-                let val_end = prefixes[i + 1..]
-                    .iter()
-                    .filter_map(|next| tip_text[val_start..].find(next))
-                    .map(|pos| val_start + pos)
-                    .min()
-                    .unwrap_or(tip_text.len());
-                let val = tip_text[val_start..val_end].trim();
-                if val.is_empty() {
-                    continue;
-                }
-                match *prefix {
-                    "中文标题:" => name_cn = Some(val.to_string()),
-                    "首播:" => airdate = NaiveDate::parse_from_str(val, "%Y-%m-%d").ok(),
-                    "时长:" => {
-                        duration = extract_time_hms(val);
-                    }
-                    _ => {}
-                }
+        // Parse ordinal, skipping decimal ordinals like "11.5".
+        // First check if the ordinal part is a decimal (second segment starts with digit).
+        {
+            let parts: Vec<&str> = a_text.split('.').collect();
+            if parts.len() >= 3 && parts[1].chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                // Decimal ordinal like "11.5.xxx" — skip
+                continue;
             }
         }
 
-        popup_map.insert(ep_id, (name_cn, airdate, duration));
-    }
+        // Extract label (the part before the first dot, e.g. "1", "SP1")
+        let label = a_text
+            .split('.')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
 
-    let episodes: Vec<ParsedEpisode> = from_list
-        .into_iter()
-        .map(|mut ep| {
-            if let Some((name_cn, airdate, duration)) = popup_map.remove(&ep.ep_id) {
-                ep.name_cn = name_cn;
-                ep.airdate = airdate;
-                ep.duration = duration;
+        // Internal ordinal: regular episodes keep their number, SP episodes use negative (SP1 -> -1)
+        let ordinal = if label.starts_with("SP") {
+            let sp_num = label
+                .strip_prefix("SP")
+                .and_then(|s| s.parse::<i32>().ok())
+                .unwrap_or(0);
+            if sp_num == 0 {
+                continue;
             }
-            ep
-        })
-        .collect();
+            -sp_num
+        } else {
+            label.parse::<i32>().unwrap_or(0)
+        };
+
+        if ordinal == 0 {
+            continue;
+        }
+
+        // Parse Japanese title (text after the ordinal prefix and dot)
+        let title = {
+            let after_dot = a_text
+                .find('.')
+                .map(|pos| a_text[pos + 1..].trim().to_string())
+                .unwrap_or_default();
+            if after_dot.is_empty() {
+                None
+            } else {
+                Some(after_dot)
+            }
+        };
+
+        // Parse Chinese name from <span class="tip"> / 中文标题</span>
+        let name_cn = li
+            .select(&tip_sel)
+            .next()
+            .map(|s| s.text().collect::<String>())
+            .map(|t| t.trim().trim_start_matches('/').trim().to_string())
+            .filter(|t| !t.is_empty());
+
+        // Parse metadata from <small class="grey"> elements
+        let mut airdate: Option<NaiveDate> = None;
+        let mut duration: Option<String> = None;
+
+        for small in li.select(&small_sel) {
+            let text = small.text().collect::<String>();
+
+            // TV: "时长:00:23:40 / 首播:2025-04-07"
+            // Movie/SP: "首播:2025-08-15"
+            if let Some(dur_str) = text
+                .split("时长:")
+                .nth(1)
+                .and_then(|s| s.split('/').next())
+                .map(|s| s.trim())
+            {
+                duration = extract_time_hms(dur_str);
+            }
+
+            if let Some(date_str) = text
+                .split("首播:")
+                .nth(1)
+                .and_then(|s| s.split('/').next())
+                .map(|s| s.trim())
+            {
+                airdate = NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok();
+            }
+        }
+
+        episodes.push(ParsedEpisode {
+            ordinal,
+            ep_id,
+            label,
+            title,
+            name_cn,
+            airdate,
+            duration,
+        });
+    }
 
     episodes
 }
@@ -526,7 +531,7 @@ pub(crate) async fn ensure_episode_metadata_cached(pool: &MySqlPool, easy_id: u3
         }
     }
 
-    let url = format!("https://bgm.tv/subject/{}", bangumi_id);
+    let url = format!("https://bangumi.tv/subject/{}/ep", bangumi_id);
     let client = Client::new();
     let resp = match client
         .get(&url)
@@ -549,22 +554,23 @@ pub(crate) async fn ensure_episode_metadata_cached(pool: &MySqlPool, easy_id: u3
         }
     };
 
-    let episodes = parse_prg_list_episodes(&html);
+    let episodes = parse_ep_page_episodes(&html);
 
     if !episodes.is_empty() {
         let mut qb = QueryBuilder::new(
-            "INSERT INTO bangumi_episodes (bangumi_easy_id, ordinal, title, name_cn, airdate, duration) ",
+            "INSERT INTO bangumi_episodes (bangumi_easy_id, ordinal, ep_label, title, name_cn, airdate, duration) ",
         );
         qb.push_values(episodes.iter(), |mut b, ep| {
             b.push_bind(easy_id)
              .push_bind(ep.ordinal)
+             .push_bind(&ep.label)
              .push_bind(&ep.title)
              .push_bind(&ep.name_cn)
              .push_bind(ep.airdate)
              .push_bind(&ep.duration);
         });
         qb.push(
-            " ON DUPLICATE KEY UPDATE title = VALUES(title), name_cn = VALUES(name_cn), airdate = VALUES(airdate), duration = VALUES(duration)",
+            " ON DUPLICATE KEY UPDATE ep_label = VALUES(ep_label), title = VALUES(title), name_cn = VALUES(name_cn), airdate = VALUES(airdate), duration = VALUES(duration)",
         );
         if let Err(e) = qb.build().execute(pool).await {
             log::error!("batch insert bangumi_episodes error: {:?}", e);
@@ -599,95 +605,164 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_prg_list_skips_subtitle() {
+    fn test_parse_ep_page_tv_regular() {
+        // TV regular episodes with both 时长 and 首播
         let html = r#"
-        <ul class="prg_list">
-            <li><a href="/ep/925279" title="ep.1 First Episode">01</a></li>
-            <li class="subtitle"><span>SP</span></li>
-            <li><a href="/ep/925280" title="ep.2 Second Episode">02</a></li>
-            <li><a href="/ep/925281" title="ep.3 Third Episode">03</a></li>
+        <ul class="line_list">
+            <li class="cat">本篇</li>
+            <li class="line_odd">
+                <h6>
+                    <a href="/ep/1459757">1.鳥白島へようこそ</a>
+                    <span class="tip"> / 欢迎来到鸟白岛</span>
+                </h6>
+                <small class="grey">时长:00:23:40 / 首播:2025-04-07</small>
+                <small class="grey">/ 讨论:+363</small>
+            </li>
+            <li class="line_even">
+                <h6>
+                    <a href="/ep/1459758">2.夏休みの過ごし方</a>
+                    <span class="tip"> / 度过暑假的方法</span>
+                </h6>
+                <small class="grey">时长:00:23:40 / 首播:2025-04-14</small>
+                <small class="grey">/ 讨论:+289</small>
+            </li>
         </ul>
         "#;
-        let result = parse_prg_list_episodes(html);
-        assert_eq!(result.len(), 3);
-        assert_eq!(result[0].ordinal, 1);
-        assert_eq!(result[0].title.as_deref(), Some("First Episode"));
-        assert_eq!(result[0].ep_id, "925279");
-        assert_eq!(result[1].ordinal, 2);
-        assert_eq!(result[2].ordinal, 3);
-    }
-
-    #[test]
-    fn test_parse_prg_list_extracts_ordinal_from_text() {
-        let html = r#"
-        <ul class="prg_list">
-            <li><a href="/ep/925279" title="ep.1 始まりの終わりと 終わりの始まり">01</a></li>
-            <li><a href="/ep/925280" title="ep.2 再会の魔女">02</a></li>
-        </ul>
-        "#;
-        let result = parse_prg_list_episodes(html);
+        let result = parse_ep_page_episodes(html);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].ordinal, 1);
+        assert_eq!(result[0].label, "1");
+        assert_eq!(result[0].title.as_deref(), Some("鳥白島へようこそ"));
+        assert_eq!(result[0].name_cn.as_deref(), Some("欢迎来到鸟白岛"));
+        assert_eq!(result[0].airdate, Some(NaiveDate::from_ymd_opt(2025, 4, 7).unwrap()));
+        assert_eq!(result[0].duration.as_deref(), Some("00:23:40"));
+        assert_eq!(result[0].ep_id, "1459757");
         assert_eq!(result[1].ordinal, 2);
+        assert_eq!(result[1].label, "2");
+        assert_eq!(result[1].title.as_deref(), Some("夏休みの過ごし方"));
+        assert_eq!(result[1].name_cn.as_deref(), Some("度过暑假的方法"));
+        assert_eq!(result[1].airdate, Some(NaiveDate::from_ymd_opt(2025, 4, 14).unwrap()));
     }
 
     #[test]
-    fn test_parse_prg_list_decimal_ordinal() {
+    fn test_parse_ep_page_sp_episodes() {
+        // SP episodes: no Chinese title, no 时长
         let html = r#"
-        <ul class="prg_list">
-            <li><a href="/ep/925285" title="ep.11.5 Memory Snow">11.5</a></li>
+        <ul class="line_list">
+            <li class="cat">特别篇</li>
+            <li class="line_odd">
+                <h6>
+                    <a href="/ep/1530061">SP1.劇場編集版 久島鴎編</a>
+                </h6>
+                <small class="grey">首播:2025-08-15</small>
+                <small class="grey">/ 讨论:+7</small>
+            </li>
+            <li class="line_even">
+                <h6>
+                    <a href="/ep/1535302">SP2.劇場編集版 紬ヴェンダース編</a>
+                </h6>
+                <small class="grey">首播:2025-08-22</small>
+                <small class="grey">/ 讨论:+8</small>
+            </li>
         </ul>
         "#;
-        let result = parse_prg_list_episodes(html);
+        let result = parse_ep_page_episodes(html);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].ordinal, -1);
+        assert_eq!(result[0].label, "SP1");
+        assert_eq!(result[0].title.as_deref(), Some("劇場編集版 久島鴎編"));
+        assert_eq!(result[0].name_cn, None);
+        assert_eq!(result[0].airdate, Some(NaiveDate::from_ymd_opt(2025, 8, 15).unwrap()));
+        assert_eq!(result[0].duration, None);
+        assert_eq!(result[1].ordinal, -2);
+        assert_eq!(result[1].label, "SP2");
+        assert_eq!(result[1].title.as_deref(), Some("劇場編集版 紬ヴェンダース編"));
+    }
+
+    #[test]
+    fn test_parse_ep_page_movie() {
+        // 剧场版 (movie): single episode, only 首播, no 时长
+        let html = r#"
+        <ul class="line_list">
+            <li class="cat">本篇</li>
+            <li class="line_odd">
+                <h6>
+                    <a href="/ep/658319">1.君の名は</a>
+                    <span class="tip"> / 你的名字</span>
+                </h6>
+                <small class="grey">首播:2016-08-26</small>
+                <small class="grey">/ 讨论:+77</small>
+            </li>
+        </ul>
+        "#;
+        let result = parse_ep_page_episodes(html);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].ordinal, 1);
+        assert_eq!(result[0].label, "1");
+        assert_eq!(result[0].title.as_deref(), Some("君の名は"));
+        assert_eq!(result[0].name_cn.as_deref(), Some("你的名字"));
+        assert_eq!(result[0].airdate, Some(NaiveDate::from_ymd_opt(2016, 8, 26).unwrap()));
+        assert_eq!(result[0].duration, None);
+    }
+
+    #[test]
+    fn test_parse_ep_page_skips_cat() {
+        // Category headers like "本篇", "特别篇" should be skipped
+        let html = r#"
+        <ul class="line_list">
+            <li class="cat">本篇</li>
+            <li class="cat">特别篇</li>
+            <li class="line_odd">
+                <h6>
+                    <a href="/ep/1459757">1.First</a>
+                    <span class="tip"> / 第一</span>
+                </h6>
+                <small class="grey">时长:00:23:40 / 首播:2025-04-07</small>
+            </li>
+        </ul>
+        "#;
+        let result = parse_ep_page_episodes(html);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].ordinal, 1);
+        assert_eq!(result[0].label, "1");
+    }
+
+    #[test]
+    fn test_parse_ep_page_decimal_ordinal_skipped() {
+        // Decimal ordinals should be skipped (same as before)
+        let html = r#"
+        <ul class="line_list">
+            <li class="line_odd">
+                <h6>
+                    <a href="/ep/925285">11.5.Memory Snow</a>
+                </h6>
+                <small class="grey">首播:2020-02-12</small>
+            </li>
+        </ul>
+        "#;
+        let result = parse_ep_page_episodes(html);
         assert!(result.is_empty());
     }
 
     #[test]
-    fn test_parse_prg_popup_extracts_name_cn_airdate_duration() {
+    fn test_parse_ep_page_airdate_only() {
+        // Episodes with only 首播 (no 时长) - common for movies and SPs
         let html = r#"
-        <ul class="prg_list">
-            <li><a href="/ep/925279" title="ep.1 始まりの終わりと 終わりの始まり">01</a></li>
-            <li><a href="/ep/925280" title="ep.2 再会の魔女">02</a></li>
+        <ul class="line_list">
+            <li class="line_odd">
+                <h6>
+                    <a href="/ep/123456">1.No Duration</a>
+                    <span class="tip"> / 无时长</span>
+                </h6>
+                <small class="grey">首播:2024-01-15</small>
+                <small class="grey">/ 讨论:+10</small>
+            </li>
         </ul>
-        <div id="prginfo_925279" class="prg_popup"><span class="tip">中文标题: 初始的终结与结束的开始<br />首播: 2020-01-01<br />时长: 00:52:40<br /></span></div>
-        <div id="prginfo_925280" class="prg_popup"><span class="tip">中文标题: 再遇魔女<br />首播: 2020-01-08<br />时长: 00:24:35<br /></span></div>
         "#;
-        let result = parse_prg_list_episodes(html);
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0].name_cn.as_deref(), Some("初始的终结与结束的开始"));
-        assert_eq!(result[0].airdate, Some(NaiveDate::from_ymd_opt(2020, 1, 1).unwrap()));
-        assert_eq!(result[0].duration.as_deref(), Some("00:52:40"));
-        assert_eq!(result[1].name_cn.as_deref(), Some("再遇魔女"));
-        assert_eq!(result[1].airdate, Some(NaiveDate::from_ymd_opt(2020, 1, 8).unwrap()));
-        assert_eq!(result[1].duration.as_deref(), Some("00:24:35"));
-    }
-
-    #[test]
-    fn test_parse_prg_popup_missing_cn_title() {
-        let html = r#"
-        <ul class="prg_list">
-            <li><a href="/ep/925285" title="ep.11.5 Memory Snow">11.5</a></li>
-        </ul>
-        <div id="prginfo_925285" class="prg_popup"><span class="tip">首播: 2020-02-12<br />时长: 01:00:00<br /></span></div>
-        "#;
-        let result = parse_prg_list_episodes(html);
-        // 11.5 is not a valid i32, should be excluded
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn test_parse_prg_popup_filters_duration_trailing_text() {
-        let html = r#"
-        <ul class="prg_list">
-            <li><a href="/ep/925279" title="ep.1 First">01</a></li>
-            <li><a href="/ep/925280" title="ep.2 Second">02</a></li>
-        </ul>
-        <div id="prginfo_925279" class="prg_popup"><span class="tip">中文标题: 初始<br />首播: 2020-01-01<br />时长: 00:52:40<br /><hr class="board" /><span class="cmt clearit"><a href="/subject/ep/925279">讨论</a> <small class="na">(+20)</small></span></span></div>
-        <div id="prginfo_925280" class="prg_popup"><span class="tip">中文标题: 再遇<br />首播: 2020-01-08<br />时长: 01:30:30讨论 (+214)<br /></span></div>
-        "#;
-        let result = parse_prg_list_episodes(html);
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0].duration.as_deref(), Some("00:52:40"));
-        assert_eq!(result[1].duration.as_deref(), Some("01:30:30"));
+        let result = parse_ep_page_episodes(html);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].label, "1");
+        assert_eq!(result[0].airdate, Some(NaiveDate::from_ymd_opt(2024, 1, 15).unwrap()));
+        assert_eq!(result[0].duration, None);
     }
 }
