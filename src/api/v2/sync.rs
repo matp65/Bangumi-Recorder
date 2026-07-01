@@ -11,7 +11,24 @@ use sqlx::QueryBuilder;
 use sqlx::mysql::MySqlPool;
 
 use super::response::{ApiResponse, bad_request, internal_error, success};
+use crate::api::new::{AddRecordQuery, add_record};
 use crate::auth_bearer::AuthUser;
+
+#[derive(Debug, PartialEq, Eq)]
+enum PendingSyncAction {
+    Upsert {
+        easy_id: u32,
+        recorder: Option<String>,
+        status: i8,
+        updated_at: NaiveDateTime,
+    },
+    CreateById {
+        bangumi_id: u32,
+        recorder: Option<String>,
+        status: i8,
+        updated_at: NaiveDateTime,
+    },
+}
 
 #[derive(Deserialize)]
 pub struct SyncRequestRecord {
@@ -43,6 +60,42 @@ pub struct SyncResponseData {
 #[derive(Deserialize)]
 pub struct SyncSinceQuery {
     pub since: Option<NaiveDateTime>,
+}
+
+fn build_pending_sync_actions(
+    records: &[SyncRequestRecord],
+    external_to_easy: &HashMap<String, u32>,
+) -> Vec<PendingSyncAction> {
+    let mut actions = Vec::with_capacity(records.len());
+    for client_rec in records {
+        if let Some(&easy_id) = external_to_easy.get(&client_rec.bangumi_id) {
+            let status = client_rec.user_status.map(|s| s as i8).unwrap_or(0);
+            let client_ts = client_rec
+                .updated_at
+                .unwrap_or_else(|| chrono::Utc::now().naive_utc());
+            actions.push(PendingSyncAction::Upsert {
+                easy_id,
+                recorder: client_rec.recorder.clone(),
+                status,
+                updated_at: client_ts,
+            });
+            continue;
+        }
+
+        if let Ok(bangumi_id) = client_rec.bangumi_id.parse::<u32>() {
+            let status = client_rec.user_status.map(|s| s as i8).unwrap_or(0);
+            let client_ts = client_rec
+                .updated_at
+                .unwrap_or_else(|| chrono::Utc::now().naive_utc());
+            actions.push(PendingSyncAction::CreateById {
+                bangumi_id,
+                recorder: client_rec.recorder.clone(),
+                status,
+                updated_at: client_ts,
+            });
+        }
+    }
+    actions
 }
 
 async fn do_sync(
@@ -86,30 +139,52 @@ async fn do_sync(
         }
     }
 
-    // Step 2: Collect all records to upsert (only those with resolved bangumi IDs)
-    struct PendingWrite {
-        easy_id: u32,
-        recorder: Option<String>,
-        status: i8,
-        updated_at: NaiveDateTime,
-    }
+    // Step 2: Build pending actions for each record, including auto-creation for unresolved IDs
+    let pending_actions = build_pending_sync_actions(&body.records, &external_to_easy);
+    let mut to_write: Vec<(u32, Option<String>, i8, NaiveDateTime)> =
+        Vec::with_capacity(pending_actions.len());
+    for action in &pending_actions {
+        match action {
+            PendingSyncAction::Upsert {
+                easy_id,
+                recorder,
+                status,
+                updated_at,
+            } => to_write.push((*easy_id, recorder.clone(), *status, *updated_at)),
+            PendingSyncAction::CreateById {
+                bangumi_id,
+                recorder,
+                status,
+                updated_at,
+            } => {
+                let response = add_record(
+                    State(pool.clone()),
+                    Extension(AuthUser { user_id }),
+                    Json(AddRecordQuery {
+                        bangumi_id: Some(*bangumi_id),
+                        source: Some("bangumi".to_string()),
+                        external_id: None,
+                        imdb_id: None,
+                        use_api: None,
+                        other_id: None,
+                        other_title: None,
+                        other_description: None,
+                        other_cover: None,
+                        other_max_number: None,
+                        other_status: None,
+                        user_status: Some(*status as i32),
+                        recorder: recorder.clone(),
+                    }),
+                )
+                .await
+                .0;
 
-    let mut to_write: Vec<PendingWrite> = Vec::with_capacity(external_to_easy.len());
-    for client_rec in &body.records {
-        let easy_id = match external_to_easy.get(&client_rec.bangumi_id) {
-            Some(&id) => id,
-            None => continue,
-        };
-        let status = client_rec.user_status.map(|s| s as i8).unwrap_or(0);
-        let client_ts = client_rec
-            .updated_at
-            .unwrap_or_else(|| chrono::Utc::now().naive_utc());
-        to_write.push(PendingWrite {
-            easy_id,
-            recorder: client_rec.recorder.clone(),
-            status,
-            updated_at: client_ts,
-        });
+                if let Some(easy_id) = response.local_bangumi_id {
+                    let client_ts = *updated_at;
+                    to_write.push((easy_id, recorder.clone(), *status, client_ts));
+                }
+            }
+        }
     }
 
     // Step 3: Single batch upsert (INSERT + UPDATE) with DB-level conflict resolution
@@ -122,12 +197,13 @@ async fn do_sync(
             "INSERT INTO recordings (user_id, bangumi_id, recorder, status, updated_at, created_at) ",
         );
         qb.push_values(to_write.iter(), |mut b, item| {
+            let (easy_id, recorder, status, updated_at) = item;
             b.push_bind(user_id)
-                .push_bind(item.easy_id)
-                .push_bind(&item.recorder)
-                .push_bind(item.status)
-                .push_bind(item.updated_at)
-                .push_bind(item.updated_at);
+                .push_bind(*easy_id)
+                .push_bind(recorder)
+                .push_bind(*status)
+                .push_bind(*updated_at)
+                .push_bind(*updated_at);
         });
         qb.push(
             " ON DUPLICATE KEY UPDATE \
@@ -269,5 +345,45 @@ pub async fn do_incremental_sync_records(
     match do_incremental_sync(pool, user_id, since).await {
         Ok(records) => success(records),
         Err(_) => internal_error("Database error"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_pending_sync_actions_creates_missing_numeric_ids() {
+        let records = vec![
+            SyncRequestRecord {
+                bangumi_id: "1001".to_string(),
+                recorder: Some("tv".to_string()),
+                user_status: Some(2),
+                updated_at: None,
+            },
+            SyncRequestRecord {
+                bangumi_id: "2002".to_string(),
+                recorder: None,
+                user_status: None,
+                updated_at: None,
+            },
+        ];
+        let mut external_to_easy = HashMap::new();
+        external_to_easy.insert("2002".to_string(), 42);
+
+        let actions = build_pending_sync_actions(&records, &external_to_easy);
+
+        assert_eq!(actions.len(), 2);
+        assert!(matches!(
+            actions[0],
+            PendingSyncAction::CreateById {
+                bangumi_id: 1001,
+                ..
+            }
+        ));
+        assert!(matches!(
+            actions[1],
+            PendingSyncAction::Upsert { easy_id: 42, .. }
+        ));
     }
 }
