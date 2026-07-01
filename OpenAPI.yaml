@@ -396,6 +396,78 @@ paths:
                         items:
                           $ref: "#/components/schemas/BangumiEpisodeMeta"
 
+  /api/v2/imdb/search:
+    get:
+      summary: 在线搜索 IMDb 条目
+      description: |
+        支持免 API 的 IMDb suggestion 接口；配置 `OMDB_API_KEY` / `IMDB_API_KEY` 后可通过 `use_api=true` 使用 OMDb API。
+        搜索结果会写入 `external_media` 本地缓存。
+      tags: [搜索]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+          description: 搜索关键词
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: use_api
+          in: query
+          schema: { type: boolean, default: false }
+          description: 是否优先使用 OMDb API
+      responses:
+        "200":
+          description: IMDb 搜索结果列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ImdbSearchItem"
+        "400":
+          description: 缺少搜索关键词
+
+  /api/v2/imdb/{id}:
+    get:
+      summary: 获取 IMDb 条目详情
+      description: |
+        按 IMDb `tt...` ID 获取详情，优先使用 24h 本地缓存；`force=true` 可强制刷新。
+      tags: [搜索]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, example: tt0816692 }
+          description: IMDb title ID 或 IMDb title URL
+        - name: force
+          in: query
+          schema: { type: boolean, default: false }
+          description: 强制刷新缓存
+        - name: use_api
+          in: query
+          schema: { type: boolean, default: false }
+          description: 是否优先使用 OMDb API
+      responses:
+        "200":
+          description: IMDb 条目详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/ImdbItem"
+        "404":
+          description: 条目未找到
+
   /api/v2/search/local:
     get:
       summary: 搜索本地缓存
@@ -549,6 +621,10 @@ paths:
           in: path
           required: true
           schema: { type: integer }
+        - name: hard_delete
+          in: query
+          schema: { type: boolean, default: false }
+          description: false=软删除，true=硬删除 recordings 记录
       responses:
         "200": { description: 删除成功, content: { application/json: { schema: { $ref: "#/components/schemas/ApiOk" } } } }
         "404": { description: 记录未找到 }
@@ -583,6 +659,71 @@ paths:
           in: path
           required: true
           schema: { type: integer }
+        - name: hard_delete
+          in: query
+          schema: { type: boolean, default: false }
+          description: false=软删除，true=硬删除 recordings 记录
+      responses:
+        "200": { description: 删除成功, content: { application/json: { schema: { $ref: "#/components/schemas/ApiOk" } } } }
+        "404": { description: 记录未找到 }
+
+  /api/v2/records/imdb/{id}:
+    get:
+      summary: 按 IMDb ID 获取追踪进度
+      tags: [追番记录]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, example: tt0816692 }
+      responses:
+        "200":
+          description: IMDb 追踪进度
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/GetRecordData"
+    patch:
+      summary: 按 IMDb ID 更新追踪进度
+      tags: [追番记录]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, example: tt0816692 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recorder: { type: string, description: "进度文本" }
+                user_status:
+                  type: integer
+                  enum: [0, 1, 2, 3, 4]
+      responses:
+        "200": { description: 更新成功, content: { application/json: { schema: { $ref: "#/components/schemas/ApiOk" } } } }
+        "404": { description: 记录未找到 }
+    delete:
+      summary: 按 IMDb ID 删除追踪记录
+      tags: [追番记录]
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, example: tt0816692 }
+        - name: hard_delete
+          in: query
+          schema: { type: boolean, default: false }
+          description: false=软删除，true=硬删除 recordings 记录
       responses:
         "200": { description: 删除成功, content: { application/json: { schema: { $ref: "#/components/schemas/ApiOk" } } } }
         "404": { description: 记录未找到 }
@@ -784,6 +925,60 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiResponse"
 
+  /api/v2/open/imdb/search:
+    get:
+      summary: 在线搜索 IMDb（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: use_api
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: IMDb 搜索结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/v2/open/imdb/{id}:
+    get:
+      summary: 获取 IMDb 详情（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, example: tt0816692 }
+        - name: force
+          in: query
+          schema: { type: boolean }
+        - name: use_api
+          in: query
+          schema: { type: boolean, default: false }
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: IMDb 条目详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
   /api/v2/open/records:
     get:
       summary: 列出追番记录（API Token 鉴权）
@@ -867,6 +1062,65 @@ paths:
           in: query
           required: true
           schema: { type: string }
+        - name: hard_delete
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200": { description: 删除成功 }
+
+  /api/v2/open/records/imdb/{id}:
+    get:
+      summary: 获取 IMDb 进度（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, example: tt0816692 }
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: IMDb 追踪进度
+    patch:
+      summary: 更新 IMDb 进度（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, example: tt0816692 }
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recorder: { type: string }
+                user_status: { type: integer }
+      responses:
+        "200": { description: 更新成功 }
+    delete:
+      summary: 删除 IMDb 记录（API Token 鉴权）
+      tags: [开放接口]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, example: tt0816692 }
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+        - name: hard_delete
+          in: query
+          schema: { type: boolean, default: false }
       responses:
         "200": { description: 删除成功 }
 
@@ -1108,26 +1362,56 @@ components:
     BangumiSearchItem:
       type: object
       properties:
+        source: { type: string, enum: [bangumi] }
         bangumi_id: { type: string }
         title: { type: string }
         alias: { type: string }
         cover: { type: string }
         info: { type: string }
-        type: { type: integer }
+        type: { $ref: "#/components/schemas/MediaType" }
       required: [bangumi_id, title, alias, cover, info, type]
+
+    ImdbSearchItem:
+      type: object
+      properties:
+        source: { type: string, enum: [imdb] }
+        imdb_id: { type: string, example: tt0816692 }
+        external_id: { type: string, example: tt0816692 }
+        title: { type: string }
+        year: { type: string, nullable: true }
+        cover: { type: string, nullable: true }
+        info: { type: string }
+        type: { $ref: "#/components/schemas/MediaType" }
+      required: [source, imdb_id, external_id, title, info, type]
 
     BangumiItem:
       type: object
       properties:
+        source: { type: string, enum: [bangumi] }
         bangumi_id: { type: string }
         title: { type: string }
         cover_url: { type: string }
-        type: { type: integer }
+        type: { $ref: "#/components/schemas/MediaType" }
         author: { type: string }
         release_date: { type: string, nullable: true, format: date }
         episodes: { type: integer }
         description: { type: string }
       required: [bangumi_id, title, cover_url, type, author, episodes, description]
+
+    ImdbItem:
+      type: object
+      properties:
+        source: { type: string, enum: [imdb] }
+        imdb_id: { type: string, example: tt0816692 }
+        external_id: { type: string, example: tt0816692 }
+        title: { type: string }
+        cover_url: { type: string }
+        type: { $ref: "#/components/schemas/MediaType" }
+        author: { type: string }
+        release_date: { type: string, nullable: true, format: date }
+        episodes: { type: integer }
+        description: { type: string }
+      required: [source, imdb_id, external_id, title, cover_url, type, author, episodes, description]
 
     LocalSearchResult:
       type: object
@@ -1144,7 +1428,9 @@ components:
     LocalSearchItem:
       type: object
       properties:
+        source: { type: string, enum: [bangumi, imdb, custom] }
         bangumi_id: { type: string, nullable: true }
+        imdb_id: { type: string, nullable: true }
         other_id: { type: integer, nullable: true }
         title: { type: string }
         cover: { type: string, nullable: true }
@@ -1157,8 +1443,12 @@ components:
       type: object
       properties:
         id: { type: integer }
+        source: { type: string, nullable: true, enum: [bangumi, imdb, custom] }
+        external_id: { type: string, nullable: true }
+        local_external_media_id: { type: integer, nullable: true }
         local_bangumi_id: { type: integer, nullable: true }
         bangumi_id: { type: string, nullable: true }
+        imdb_id: { type: string, nullable: true }
         recorder: { type: string, nullable: true }
         user_status: { type: integer, nullable: true }
         is_delete: { type: boolean }
@@ -1170,12 +1460,19 @@ components:
       type: object
       properties:
         id: { type: integer }
+        source: { type: string, nullable: true, enum: [bangumi, imdb, custom] }
+        external_id: { type: string, nullable: true }
+        local_external_media_id: { type: integer, nullable: true }
         local_bangumi_id: { type: integer, nullable: true }
         other_id: { type: integer, nullable: true }
         local_other_id: { type: integer, nullable: true }
         bangumi_id: { type: string, nullable: true }
+        imdb_id: { type: string, nullable: true }
         title: { type: string, nullable: true }
-        type: { type: integer, nullable: true }
+        type:
+          allOf:
+            - $ref: "#/components/schemas/MediaType"
+          nullable: true
         author: { type: string, nullable: true }
         episodes: { type: integer, description: "已观看集数，0 表示无数据" }
         cover_url: { type: string, nullable: true }
@@ -1247,6 +1544,10 @@ components:
     AddRecordData:
       type: object
       properties:
+        source: { type: string, nullable: true, enum: [bangumi, imdb, custom] }
+        external_id: { type: string, nullable: true }
+        imdb_id: { type: string, nullable: true }
+        local_external_media_id: { type: integer, nullable: true }
         local_bangumi_id: { type: integer, nullable: true }
         other_id: { type: integer, nullable: true }
         local_other_id: { type: integer, nullable: true }
@@ -1257,6 +1558,10 @@ components:
     GetRecordData:
       type: object
       properties:
+        source: { type: string, nullable: true, enum: [bangumi, imdb, custom] }
+        external_id: { type: string, nullable: true }
+        imdb_id: { type: string, nullable: true }
+        local_external_media_id: { type: integer, nullable: true }
         local_bangumi_id: { type: integer, nullable: true }
         other_id: { type: integer, nullable: true }
         local_other_id: { type: integer, nullable: true }
@@ -1270,6 +1575,10 @@ components:
       type: object
       properties:
         bangumi_id: { type: integer, description: "Bangumi 外部 ID" }
+        source: { type: string, enum: [bangumi, imdb, custom], description: "外部来源。IMDb 可用 source=imdb + external_id/imdb_id" }
+        external_id: { type: string, description: "来源外部 ID。Bangumi 为数字字符串，IMDb 为 tt..." }
+        imdb_id: { type: string, description: "IMDb title ID，可代替 source=imdb + external_id" }
+        use_api: { type: boolean, description: "IMDb 添加前拉取详情时是否优先使用 OMDb API" }
         other_id: { type: integer, description: "自定义条目 ID" }
         other_title: { type: string }
         other_description: { type: string }
@@ -1286,7 +1595,14 @@ components:
           description: "进度 集数|分钟:秒"
       oneOf:
         - required: [bangumi_id]
+        - required: [source, external_id]
+        - required: [imdb_id]
         - required: [other_id]
+
+    MediaType:
+      type: integer
+      description: "1=TV, 2=Movie, 3=OVA, 4=ONA, 5=TV Short, 6=Music, 7=Book, 8=Other, 9=Game, 10=Real"
+      enum: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     # ── API Token ──
     ApiTokenItem:

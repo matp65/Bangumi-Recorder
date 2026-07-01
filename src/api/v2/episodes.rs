@@ -1,17 +1,32 @@
 use axum::{
+    Json,
     extract::{Extension, Path, Query, State},
     http::StatusCode,
-    Json,
 };
-use serde::{Deserialize, Serialize};
-use sqlx::mysql::MySqlPool;
-use sqlx::QueryBuilder;
 use chrono::{NaiveDate, NaiveDateTime, Utc};
 use reqwest::Client;
 use scraper::{Html, Selector};
+use serde::{Deserialize, Serialize};
+use sqlx::QueryBuilder;
+use sqlx::mysql::MySqlPool;
+use std::sync::OnceLock;
 
+use super::response::{ApiResponse, internal_error, not_found, success};
 use crate::auth_bearer::AuthUser;
-use super::response::{success, not_found, internal_error, ApiResponse};
+
+fn http_client() -> &'static Client {
+    static CLIENT: OnceLock<Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        Client::builder()
+            .user_agent("Mozilla/5.0")
+            .build()
+            .unwrap_or_else(|_| Client::new())
+    })
+}
+
+fn selector(pattern: &'static str, slot: &'static OnceLock<Selector>) -> &'static Selector {
+    slot.get_or_init(|| Selector::parse(pattern).expect("valid CSS selector"))
+}
 
 #[derive(Serialize, Debug)]
 pub struct EpisodeItem {
@@ -49,29 +64,6 @@ pub async fn list_episodes(
     let bangumi_id_str = bangumi_id.to_string();
     let force = query.force.unwrap_or(false);
 
-    let recording = match sqlx::query!(
-        r#"
-        SELECT r.id
-        FROM recordings r
-        JOIN bangumi_info_easy b ON r.bangumi_id = b.id
-        WHERE b.external_id = ? AND r.user_id = ?
-        "#,
-        bangumi_id_str,
-        auth_user.user_id
-    )
-    .fetch_optional(&pool)
-    .await
-    {
-        Ok(Some(r)) => r,
-        Ok(None) => return not_found("Recording not found for this bangumi"),
-        Err(e) => {
-            log::error!("DB error: {:?}", e);
-            return internal_error("Database error");
-        }
-    };
-
-    let recording_id = recording.id;
-
     let easy_id = match sqlx::query_scalar!(
         "SELECT id FROM bangumi_info_easy WHERE external_id = ?",
         bangumi_id_str
@@ -88,6 +80,26 @@ pub async fn list_episodes(
     };
 
     ensure_episode_metadata_cached(&pool, easy_id, bangumi_id_str.as_str(), force).await;
+
+    let recording_id = match sqlx::query_scalar!(
+        r#"
+        SELECT r.id
+        FROM recordings r
+        WHERE r.bangumi_id = ? AND r.user_id = ? AND r.is_delete = 0
+        "#,
+        easy_id,
+        auth_user.user_id
+    )
+    .fetch_optional(&pool)
+    .await
+    {
+        Ok(Some(id)) => id,
+        Ok(None) => 0,
+        Err(e) => {
+            log::error!("DB error: {:?}", e);
+            return internal_error("Database error");
+        }
+    };
 
     let metadata = match sqlx::query!(
         r#"
@@ -108,33 +120,33 @@ pub async fn list_episodes(
         }
     };
 
-    let user_records = match sqlx::query!(
-        r#"
-        SELECT ordinal, watched, progress_seconds, duration_seconds, completed_at, updated_at
-        FROM episode_records
-        WHERE recording_id = ?
-        "#,
-        recording_id
-    )
-    .fetch_all(&pool)
-    .await
-    {
-        Ok(rows) => rows,
-        Err(e) => {
-            log::error!("DB error: {:?}", e);
-            return internal_error("Database error");
+    let user_records = if recording_id == 0 {
+        Vec::new()
+    } else {
+        match sqlx::query!(
+            r#"
+            SELECT ordinal, watched, progress_seconds, duration_seconds, completed_at, updated_at
+            FROM episode_records
+            WHERE recording_id = ?
+            "#,
+            recording_id
+        )
+        .fetch_all(&pool)
+        .await
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                log::error!("DB error: {:?}", e);
+                return internal_error("Database error");
+            }
         }
     };
 
-    let user_map: std::collections::HashMap<i32, _> = user_records
-        .iter()
-        .map(|r| (r.ordinal, r))
-        .collect();
+    let user_map: std::collections::HashMap<i32, _> =
+        user_records.iter().map(|r| (r.ordinal, r)).collect();
 
-    let metadata_map: std::collections::HashMap<i32, _> = metadata
-        .into_iter()
-        .map(|m| (m.ordinal, m))
-        .collect();
+    let metadata_map: std::collections::HashMap<i32, _> =
+        metadata.into_iter().map(|m| (m.ordinal, m)).collect();
 
     let mut seen_ordinals: std::collections::HashSet<i32> = std::collections::HashSet::new();
     let mut episodes: Vec<EpisodeItem> = Vec::new();
@@ -366,20 +378,25 @@ fn extract_time_hms(s: &str) -> Option<String> {
 pub fn parse_ep_page_episodes(html: &str) -> Vec<ParsedEpisode> {
     let document = Html::parse_document(html);
 
-    let li_sel = Selector::parse("ul.line_list > li").unwrap();
-    let a_sel = Selector::parse("h6 a").unwrap();
-    let tip_sel = Selector::parse("h6 span.tip").unwrap();
-    let small_sel = Selector::parse("small.grey").unwrap();
+    static LI_SEL: OnceLock<Selector> = OnceLock::new();
+    static A_SEL: OnceLock<Selector> = OnceLock::new();
+    static TIP_SEL: OnceLock<Selector> = OnceLock::new();
+    static SMALL_SEL: OnceLock<Selector> = OnceLock::new();
+
+    let li_sel = selector("ul.line_list > li", &LI_SEL);
+    let a_sel = selector("h6 a", &A_SEL);
+    let tip_sel = selector("h6 span.tip", &TIP_SEL);
+    let small_sel = selector("small.grey", &SMALL_SEL);
 
     let mut episodes = Vec::new();
 
-    for li in document.select(&li_sel) {
+    for li in document.select(li_sel) {
         // Skip category header rows (li.cat), e.g. "本篇", "特别篇"
         if li.value().classes().any(|c| c == "cat") {
             continue;
         }
 
-        let a = match li.select(&a_sel).next() {
+        let a = match li.select(a_sel).next() {
             Some(a) => a,
             None => continue,
         };
@@ -396,20 +413,22 @@ pub fn parse_ep_page_episodes(html: &str) -> Vec<ParsedEpisode> {
         // Parse ordinal, skipping decimal ordinals like "11.5".
         // First check if the ordinal part is a decimal (second segment starts with digit).
         {
-            let parts: Vec<&str> = a_text.split('.').collect();
-            if parts.len() >= 3 && parts[1].chars().next().map_or(false, |c| c.is_ascii_digit()) {
+            let mut parts = a_text.split('.');
+            let decimal_part = parts.nth(1);
+            if parts.next().is_some()
+                && decimal_part
+                    .unwrap_or_default()
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_digit())
+            {
                 // Decimal ordinal like "11.5.xxx" — skip
                 continue;
             }
         }
 
         // Extract label (the part before the first dot, e.g. "1", "SP1")
-        let label = a_text
-            .split('.')
-            .next()
-            .unwrap_or("")
-            .trim()
-            .to_string();
+        let label = a_text.split('.').next().unwrap_or("").trim().to_string();
 
         // Internal ordinal: regular episodes keep their number, SP episodes use negative (SP1 -> -1)
         let ordinal = if label.starts_with("SP") {
@@ -444,7 +463,7 @@ pub fn parse_ep_page_episodes(html: &str) -> Vec<ParsedEpisode> {
 
         // Parse Chinese name from <span class="tip"> / 中文标题</span>
         let name_cn = li
-            .select(&tip_sel)
+            .select(tip_sel)
             .next()
             .map(|s| s.text().collect::<String>())
             .map(|t| t.trim().trim_start_matches('/').trim().to_string())
@@ -454,7 +473,7 @@ pub fn parse_ep_page_episodes(html: &str) -> Vec<ParsedEpisode> {
         let mut airdate: Option<NaiveDate> = None;
         let mut duration: Option<String> = None;
 
-        for small in li.select(&small_sel) {
+        for small in li.select(small_sel) {
             let text = small.text().collect::<String>();
 
             // TV: "时长:00:23:40 / 首播:2025-04-07"
@@ -492,7 +511,12 @@ pub fn parse_ep_page_episodes(html: &str) -> Vec<ParsedEpisode> {
     episodes
 }
 
-pub(crate) async fn ensure_episode_metadata_cached(pool: &MySqlPool, easy_id: u32, bangumi_id: &str, force: bool) {
+pub(crate) async fn ensure_episode_metadata_cached(
+    pool: &MySqlPool,
+    easy_id: u32,
+    bangumi_id: &str,
+    force: bool,
+) {
     if !force {
         let count = sqlx::query_scalar!(
             "SELECT COUNT(*) FROM bangumi_episodes WHERE bangumi_easy_id = ?",
@@ -532,16 +556,14 @@ pub(crate) async fn ensure_episode_metadata_cached(pool: &MySqlPool, easy_id: u3
     }
 
     let url = format!("https://bangumi.tv/subject/{}/ep", bangumi_id);
-    let client = Client::new();
-    let resp = match client
-        .get(&url)
-        .header("User-Agent", "Mozilla/5.0")
-        .send()
-        .await
-    {
+    let resp = match http_client().get(&url).send().await {
         Ok(r) => r,
         Err(e) => {
-            log::error!("Failed to fetch episode metadata page for {}: {:?}", bangumi_id, e);
+            log::error!(
+                "Failed to fetch episode metadata page for {}: {:?}",
+                bangumi_id,
+                e
+            );
             return;
         }
     };
@@ -549,7 +571,11 @@ pub(crate) async fn ensure_episode_metadata_cached(pool: &MySqlPool, easy_id: u3
     let html = match resp.text().await {
         Ok(t) => t,
         Err(e) => {
-            log::error!("Failed to decode episode metadata page for {}: {:?}", bangumi_id, e);
+            log::error!(
+                "Failed to decode episode metadata page for {}: {:?}",
+                bangumi_id,
+                e
+            );
             return;
         }
     };
@@ -562,12 +588,12 @@ pub(crate) async fn ensure_episode_metadata_cached(pool: &MySqlPool, easy_id: u3
         );
         qb.push_values(episodes.iter(), |mut b, ep| {
             b.push_bind(easy_id)
-             .push_bind(ep.ordinal)
-             .push_bind(&ep.label)
-             .push_bind(&ep.title)
-             .push_bind(&ep.name_cn)
-             .push_bind(ep.airdate)
-             .push_bind(&ep.duration);
+                .push_bind(ep.ordinal)
+                .push_bind(&ep.label)
+                .push_bind(&ep.title)
+                .push_bind(&ep.name_cn)
+                .push_bind(ep.airdate)
+                .push_bind(&ep.duration);
         });
         qb.push(
             " ON DUPLICATE KEY UPDATE ep_label = VALUES(ep_label), title = VALUES(title), name_cn = VALUES(name_cn), airdate = VALUES(airdate), duration = VALUES(duration)",
@@ -596,9 +622,18 @@ mod tests {
     #[test]
     fn test_extract_time_hms() {
         assert_eq!(extract_time_hms("00:52:40").as_deref(), Some("00:52:40"));
-        assert_eq!(extract_time_hms("00:52:40讨论 (+20)").as_deref(), Some("00:52:40"));
-        assert_eq!(extract_time_hms("01:30:30讨论 (+214)").as_deref(), Some("01:30:30"));
-        assert_eq!(extract_time_hms("00:52:40讨论").as_deref(), Some("00:52:40"));
+        assert_eq!(
+            extract_time_hms("00:52:40讨论 (+20)").as_deref(),
+            Some("00:52:40")
+        );
+        assert_eq!(
+            extract_time_hms("01:30:30讨论 (+214)").as_deref(),
+            Some("01:30:30")
+        );
+        assert_eq!(
+            extract_time_hms("00:52:40讨论").as_deref(),
+            Some("00:52:40")
+        );
         assert_eq!(extract_time_hms("no time here"), None);
         assert_eq!(extract_time_hms("12:34"), None);
         assert_eq!(extract_time_hms(""), None);
@@ -634,14 +669,20 @@ mod tests {
         assert_eq!(result[0].label, "1");
         assert_eq!(result[0].title.as_deref(), Some("鳥白島へようこそ"));
         assert_eq!(result[0].name_cn.as_deref(), Some("欢迎来到鸟白岛"));
-        assert_eq!(result[0].airdate, Some(NaiveDate::from_ymd_opt(2025, 4, 7).unwrap()));
+        assert_eq!(
+            result[0].airdate,
+            Some(NaiveDate::from_ymd_opt(2025, 4, 7).unwrap())
+        );
         assert_eq!(result[0].duration.as_deref(), Some("00:23:40"));
         assert_eq!(result[0].ep_id, "1459757");
         assert_eq!(result[1].ordinal, 2);
         assert_eq!(result[1].label, "2");
         assert_eq!(result[1].title.as_deref(), Some("夏休みの過ごし方"));
         assert_eq!(result[1].name_cn.as_deref(), Some("度过暑假的方法"));
-        assert_eq!(result[1].airdate, Some(NaiveDate::from_ymd_opt(2025, 4, 14).unwrap()));
+        assert_eq!(
+            result[1].airdate,
+            Some(NaiveDate::from_ymd_opt(2025, 4, 14).unwrap())
+        );
     }
 
     #[test]
@@ -672,11 +713,17 @@ mod tests {
         assert_eq!(result[0].label, "SP1");
         assert_eq!(result[0].title.as_deref(), Some("劇場編集版 久島鴎編"));
         assert_eq!(result[0].name_cn, None);
-        assert_eq!(result[0].airdate, Some(NaiveDate::from_ymd_opt(2025, 8, 15).unwrap()));
+        assert_eq!(
+            result[0].airdate,
+            Some(NaiveDate::from_ymd_opt(2025, 8, 15).unwrap())
+        );
         assert_eq!(result[0].duration, None);
         assert_eq!(result[1].ordinal, -2);
         assert_eq!(result[1].label, "SP2");
-        assert_eq!(result[1].title.as_deref(), Some("劇場編集版 紬ヴェンダース編"));
+        assert_eq!(
+            result[1].title.as_deref(),
+            Some("劇場編集版 紬ヴェンダース編")
+        );
     }
 
     #[test]
@@ -701,7 +748,10 @@ mod tests {
         assert_eq!(result[0].label, "1");
         assert_eq!(result[0].title.as_deref(), Some("君の名は"));
         assert_eq!(result[0].name_cn.as_deref(), Some("你的名字"));
-        assert_eq!(result[0].airdate, Some(NaiveDate::from_ymd_opt(2016, 8, 26).unwrap()));
+        assert_eq!(
+            result[0].airdate,
+            Some(NaiveDate::from_ymd_opt(2016, 8, 26).unwrap())
+        );
         assert_eq!(result[0].duration, None);
     }
 
@@ -762,7 +812,10 @@ mod tests {
         let result = parse_ep_page_episodes(html);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].label, "1");
-        assert_eq!(result[0].airdate, Some(NaiveDate::from_ymd_opt(2024, 1, 15).unwrap()));
+        assert_eq!(
+            result[0].airdate,
+            Some(NaiveDate::from_ymd_opt(2024, 1, 15).unwrap())
+        );
         assert_eq!(result[0].duration, None);
     }
 }

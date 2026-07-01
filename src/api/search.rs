@@ -1,18 +1,29 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::OnceLock};
 
-use axum::{
-    extract::State,
-    Json,
-};
+use axum::{Json, extract::State};
 use serde::{Deserialize, Serialize};
 
 use reqwest::Client;
-use urlencoding::encode;
-use scraper::{Html, Selector, ElementRef};
-use sqlx::mysql::MySqlPool;
+use scraper::{ElementRef, Html, Selector};
 use sqlx::QueryBuilder;
+use sqlx::mysql::MySqlPool;
+use urlencoding::encode;
 
-use chrono::{Duration, Utc, NaiveDate};
+use chrono::{Duration, NaiveDate, Utc};
+
+fn http_client() -> &'static Client {
+    static CLIENT: OnceLock<Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        Client::builder()
+            .user_agent("Mozilla/5.0")
+            .build()
+            .unwrap_or_else(|_| Client::new())
+    })
+}
+
+fn selector(pattern: &'static str, slot: &'static OnceLock<Selector>) -> &'static Selector {
+    slot.get_or_init(|| Selector::parse(pattern).expect("valid CSS selector"))
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TitleSearchQuery {
@@ -28,11 +39,12 @@ pub struct IDSearchQuery {
 #[derive(Debug, Serialize)]
 pub struct IDSearchResponse {
     pub status: i32,
-    pub data: Option<BangumiItem>
+    pub data: Option<BangumiItem>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct BangumiItem {
+    pub source: String,
     pub bangumi_id: String,
     pub title: String,
     pub cover_url: String,
@@ -45,6 +57,7 @@ pub struct BangumiItem {
 
 #[derive(Debug, Serialize)]
 pub struct BangumiSearchItem {
+    pub source: String,
     pub bangumi_id: String,
     pub title: String,
     pub alias: String,
@@ -56,13 +69,14 @@ pub struct BangumiSearchItem {
 #[derive(Debug, Serialize)]
 pub struct SearchBangumiResponse {
     pub status: i32,
-    pub data: Option<Vec<BangumiSearchItem>>
+    pub data: Option<Vec<BangumiSearchItem>>,
 }
 
 fn parse_bangumi_type_easy(item: ElementRef) -> i32 {
-    let type_sel = scraper::Selector::parse("span.ico_subject_type").unwrap();
+    static TYPE_SEL: OnceLock<Selector> = OnceLock::new();
+    let type_sel = selector("span.ico_subject_type", &TYPE_SEL);
 
-    let span = match item.select(&type_sel).next() {
+    let span = match item.select(type_sel).next() {
         Some(s) => s,
         None => return 8, // Other
     };
@@ -70,23 +84,26 @@ fn parse_bangumi_type_easy(item: ElementRef) -> i32 {
     let class = span.value().attr("class").unwrap_or_default();
 
     match () {
-        _ if class.contains("subject_type_2") => 1, // TV
-        _ if class.contains("subject_type_4") => 2, // Game
-        _ if class.contains("subject_type_1") => 7, // Book
-        _ if class.contains("subject_type_3") => 6, // Music
-        _ => 8, // Other
+        _ if class.contains("subject_type_2") => 1,  // TV
+        _ if class.contains("subject_type_4") => 9,  // Game
+        _ if class.contains("subject_type_1") => 7,  // Book
+        _ if class.contains("subject_type_3") => 6,  // Music
+        _ if class.contains("subject_type_6") => 10, // Real
+        _ => 8,                                      // Other
     }
 }
 
 pub async fn search_bangumi_by_title(
     State(pool): State<MySqlPool>,
-    Json(params): Json<TitleSearchQuery>
+    Json(params): Json<TitleSearchQuery>,
 ) -> Json<SearchBangumiResponse> {
-
     let title = match &params.title {
         Some(t) if !t.trim().is_empty() => t.trim(),
         _ => {
-            return Json(SearchBangumiResponse { status: -3, data: None });
+            return Json(SearchBangumiResponse {
+                status: -3,
+                data: None,
+            });
         }
     };
 
@@ -99,46 +116,49 @@ pub async fn search_bangumi_by_title(
     } else {
         format!(
             "https://bgm.tv/subject_search/{}?cat=all&page={}",
-            encoded_title,
-            page
+            encoded_title, page
         )
     };
 
-    let client = Client::new();
-
-    let resp = match client
-        .get(&url)
-        .header("User-Agent", "Mozilla/5.0")
-        .send()
-        .await
-    {
+    let resp = match http_client().get(&url).send().await {
         Ok(r) => r,
         Err(_) => {
-            return Json(SearchBangumiResponse { status: -1, data: None });
+            return Json(SearchBangumiResponse {
+                status: -1,
+                data: None,
+            });
         }
     };
 
     let html = match resp.text().await {
         Ok(t) => t,
         Err(_) => {
-            return Json(SearchBangumiResponse { status: -2, data: None });
+            return Json(SearchBangumiResponse {
+                status: -2,
+                data: None,
+            });
         }
     };
 
     let results = {
         let document = Html::parse_document(&html);
 
-        let item_sel = Selector::parse("li.item").unwrap();
-        let title_sel = Selector::parse("h3 a.l").unwrap();
-        let alias_sel = Selector::parse("h3 small").unwrap();
-        let cover_sel = Selector::parse("img.cover").unwrap();
-        let info_sel = Selector::parse("p.info.tip").unwrap();
+        static ITEM_SEL: OnceLock<Selector> = OnceLock::new();
+        static TITLE_SEL: OnceLock<Selector> = OnceLock::new();
+        static ALIAS_SEL: OnceLock<Selector> = OnceLock::new();
+        static COVER_SEL: OnceLock<Selector> = OnceLock::new();
+        static INFO_SEL: OnceLock<Selector> = OnceLock::new();
+
+        let item_sel = selector("li.item", &ITEM_SEL);
+        let title_sel = selector("h3 a.l", &TITLE_SEL);
+        let alias_sel = selector("h3 small", &ALIAS_SEL);
+        let cover_sel = selector("img.cover", &COVER_SEL);
+        let info_sel = selector("p.info.tip", &INFO_SEL);
 
         let mut results: Vec<BangumiSearchItem> = Vec::new();
 
-        for item in document.select(&item_sel) {
-
-            let a = match item.select(&title_sel).next() {
+        for item in document.select(item_sel) {
+            let a = match item.select(title_sel).next() {
                 Some(a) => a,
                 None => continue,
             };
@@ -156,13 +176,13 @@ pub async fn search_bangumi_by_title(
             };
 
             let alias = item
-                .select(&alias_sel)
+                .select(alias_sel)
                 .next()
                 .map(|e| e.text().collect::<String>().trim().to_string())
                 .unwrap_or_default();
 
             let cover = item
-                .select(&cover_sel)
+                .select(cover_sel)
                 .next()
                 .and_then(|img| img.value().attr("src"))
                 .map(|src| {
@@ -175,12 +195,11 @@ pub async fn search_bangumi_by_title(
                 .unwrap_or_default();
 
             let info = item
-                .select(&info_sel)
+                .select(info_sel)
                 .next()
                 .map(|e| {
                     e.text()
-                        .collect::<Vec<_>>()
-                        .join(" ")
+                        .collect::<String>()
                         .split_whitespace()
                         .collect::<Vec<_>>()
                         .join(" ")
@@ -190,6 +209,7 @@ pub async fn search_bangumi_by_title(
             let r#type = parse_bangumi_type_easy(item);
             // ===== push =====
             results.push(BangumiSearchItem {
+                source: "bangumi".to_string(),
                 bangumi_id,
                 title,
                 alias,
@@ -208,10 +228,10 @@ pub async fn search_bangumi_by_title(
         );
         qb.push_values(results.iter(), |mut b, r| {
             b.push_bind(r.bangumi_id.as_str())
-             .push_bind(r.title.as_str())
-             .push_bind(r.r#type)
-             .push_bind(r.info.as_str())
-             .push_bind(r.cover.as_str());
+                .push_bind(r.title.as_str())
+                .push_bind(r.r#type)
+                .push_bind(r.info.as_str())
+                .push_bind(r.cover.as_str());
         });
         qb.push(
             " ON DUPLICATE KEY UPDATE title = VALUES(title), type = VALUES(type), info = VALUES(info), cover_url = VALUES(cover_url), updated_at = CURRENT_TIMESTAMP",
@@ -238,38 +258,37 @@ fn parse_date(input: &str) -> Option<NaiveDate> {
 
 pub async fn search_bangumi_by_id(
     State(pool): State<MySqlPool>,
-    Json(params): Json<IDSearchQuery>
+    Json(params): Json<IDSearchQuery>,
 ) -> Json<IDSearchResponse> {
-
     if params.id.is_none() {
-        return Json(IDSearchResponse { 
+        return Json(IDSearchResponse {
             status: -1,
-            data: None
-        })
+            data: None,
+        });
     }
 
     let id = params.id.unwrap();
 
-    let _local_bangumi_id: Option<u32> = match sqlx::query_scalar!(
-        "SELECT id FROM bangumi_info_easy WHERE external_id = ?",
-        id
-    )
-    .fetch_optional(&pool)
-    .await    
-    {
-        Ok(Some(id)) => Some(id),
-        Ok(None) => None,
-        Err(_) => return Json(IDSearchResponse { 
-            status: -2,
-            data: None }),
-    };
+    let _local_bangumi_id: Option<u32> =
+        match sqlx::query_scalar!("SELECT id FROM bangumi_info_easy WHERE external_id = ?", id)
+            .fetch_optional(&pool)
+            .await
+        {
+            Ok(Some(id)) => Some(id),
+            Ok(None) => None,
+            Err(_) => {
+                return Json(IDSearchResponse {
+                    status: -2,
+                    data: None,
+                });
+            }
+        };
 
     if _local_bangumi_id.is_some() {
         match sqlx::query!(
             r#"
             SELECT 
-                r.id,
-                r.bangumi_id AS local_bangumi_id,
+                b.id,
                 b.external_id AS bangumi_id,
                 b.title,
                 b.type,
@@ -278,68 +297,71 @@ pub async fn search_bangumi_by_id(
                 d.episodes,
                 d.description,
                 b.cover_url,
-                r.recorder,
-                r.status,
-                r.updated_at,
-                r.created_at
-            FROM recordings r
-            LEFT JOIN bangumi_info_easy b
-                ON r.bangumi_id = b.id
+                d.updated_at AS "updated_at?"
+            FROM bangumi_info_easy b
             LEFT JOIN bangumi_info_detailed d
                 ON d.bangumi_id = b.id
             WHERE b.id = ?
             "#,
             _local_bangumi_id.unwrap()
         )
-        .fetch_all(&pool)
+        .fetch_optional(&pool)
         .await
-            {
-                Ok(rows) => {
-                    if let Some(r) = rows.into_iter().next() {
-                        if Utc::now().naive_utc() <= r.updated_at + Duration::hours(24) {
-                            return Json(IDSearchResponse {
-                                status: 0,
-                                data: Some(BangumiItem {
-                                    bangumi_id: r.bangumi_id.unwrap_or_default(),
-                                    title: r.title.unwrap_or_default(),
-                                    cover_url: r.cover_url.unwrap_or_default(),
-                                    r#type: r.r#type.unwrap_or(8),
-                                    author: r.author.unwrap_or_default(),
-                                    release_date: Some(r.release_date.unwrap_or_default()),
-                                    episodes: r.episodes.unwrap_or(0),
-                                    description: r.description.unwrap_or_default(),
-                                }),
-                            });
-                        }
-                    }
+        {
+            Ok(Some(r)) => {
+                if let Some(updated_at) = r.updated_at
+                    && Utc::now().naive_utc() <= updated_at + Duration::hours(24)
+                {
+                    return Json(IDSearchResponse {
+                        status: 0,
+                        data: Some(BangumiItem {
+                            source: "bangumi".to_string(),
+                            bangumi_id: r.bangumi_id,
+                            title: r.title,
+                            cover_url: r.cover_url.unwrap_or_default(),
+                            r#type: r.r#type,
+                            author: r.author.unwrap_or_default(),
+                            release_date: r.release_date,
+                            episodes: r.episodes.unwrap_or(0),
+                            description: r.description.unwrap_or_default(),
+                        }),
+                    });
                 }
-                Err(_) => {}
             }
+            Ok(None) => {}
+            Err(_) => {}
+        }
     }
 
-    let client = Client::new();
     let url = format!("https://bgm.tv/subject/{}", id);
 
-    let resp = match client.get(&url)
-        .header("User-Agent", "Mozilla/5.0")
-        .send()
-        .await
-    {
+    let resp = match http_client().get(&url).send().await {
         Ok(r) => r,
-        Err(_) => return Json(IDSearchResponse { status: -1, data: None }),
+        Err(_) => {
+            return Json(IDSearchResponse {
+                status: -1,
+                data: None,
+            });
+        }
     };
 
     let html = match resp.text().await {
         Ok(t) => t,
-        Err(_) => return Json(IDSearchResponse { status: -2, data: None }),
+        Err(_) => {
+            return Json(IDSearchResponse {
+                status: -2,
+                data: None,
+            });
+        }
     };
     let mut result = {
         let document = Html::parse_document(&html);
 
-        let type_selector = Selector::parse("h1.nameSingle small.grey").unwrap();
+        static TYPE_SELECTOR: OnceLock<Selector> = OnceLock::new();
+        let type_selector = selector("h1.nameSingle small.grey", &TYPE_SELECTOR);
 
         let type_text = document
-            .select(&type_selector)
+            .select(type_selector)
             .next()
             .map(|e| e.text().collect::<String>().trim().to_string())
             .unwrap_or_default();
@@ -352,20 +374,29 @@ pub async fn search_bangumi_by_id(
             "TV SP" => 5,
             "Music" => 6,
             "书籍" => 7,
+            "游戏" | "Game" => 9,
+            "三次元" | "电视剧" | "Real" => 10,
             _ => 8,
         };
 
-        let li_selector = Selector::parse("#infobox li").unwrap();
-        let span_selector = Selector::parse("span.tip").unwrap();
+        static LI_SELECTOR: OnceLock<Selector> = OnceLock::new();
+        static SPAN_SELECTOR: OnceLock<Selector> = OnceLock::new();
+        let li_selector = selector("#infobox li", &LI_SELECTOR);
+        let span_selector = selector("span.tip", &SPAN_SELECTOR);
 
         let mut info_map: HashMap<String, String> = HashMap::new();
 
-        for li in document.select(&li_selector) {
-            let key = li.select(&span_selector)
-                .next()
-                .map(|e| e.text().collect::<String>().replace(":", "").trim().to_string());
+        for li in document.select(li_selector) {
+            let key = li.select(span_selector).next().map(|e| {
+                e.text()
+                    .collect::<String>()
+                    .replace(":", "")
+                    .trim()
+                    .to_string()
+            });
 
-            let value = li.text()
+            let value = li
+                .text()
                 .collect::<String>()
                 .split(':')
                 .skip(1)
@@ -378,42 +409,66 @@ pub async fn search_bangumi_by_id(
             }
         }
 
-        let author = info_map.get("原作")
+        let author = info_map
+            .get("原作")
+            .or_else(|| info_map.get("作者"))
+            .or_else(|| info_map.get("出版社"))
+            .or_else(|| info_map.get("开发"))
+            .or_else(|| info_map.get("开发商"))
+            .or_else(|| info_map.get("发行商"))
+            .or_else(|| info_map.get("发行"))
+            .or_else(|| info_map.get("制作"))
             .cloned()
             .unwrap_or_default();
 
-        let episodes = info_map.get("话数")
+        let episodes = info_map
+            .get("话数")
+            .or_else(|| info_map.get("册数"))
+            .or_else(|| info_map.get("卷数"))
+            .or_else(|| info_map.get("章节数"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0);
 
-        let release_date = info_map.get("放送开始")
+        let release_date = info_map
+            .get("放送开始")
+            .or_else(|| info_map.get("发售日"))
+            .or_else(|| info_map.get("发行日期"))
+            .or_else(|| info_map.get("出版日期"))
+            .or_else(|| info_map.get("连载开始"))
+            .or_else(|| info_map.get("上映年度"))
             .and_then(|v| parse_date(v));
 
-        let desc_selector = Selector::parse("#subject_summary").unwrap();
+        static DESC_SELECTOR: OnceLock<Selector> = OnceLock::new();
+        let desc_selector = selector("#subject_summary", &DESC_SELECTOR);
 
         let description = document
-            .select(&desc_selector)
+            .select(desc_selector)
             .next()
             .map(|e| e.text().collect::<String>().trim().to_string())
             .unwrap_or_default();
 
         let title = document
-            .select(&Selector::parse(".infobox a.thickbox").unwrap())
+            .select({
+                static THICKBOX_SELECTOR: OnceLock<Selector> = OnceLock::new();
+                selector(".infobox a.thickbox", &THICKBOX_SELECTOR)
+            })
             .next()
             .and_then(|a| a.value().attr("title"))
             .map(|t| t.trim().to_string())
             .or_else(|| {
-                let name_sel = Selector::parse("h1.nameSingle").unwrap();
+                static NAME_SEL: OnceLock<Selector> = OnceLock::new();
+                let name_sel = selector("h1.nameSingle", &NAME_SEL);
                 document
-                    .select(&name_sel)
+                    .select(name_sel)
                     .next()
                     .map(|e| e.text().collect::<String>().trim().to_string())
             })
             .unwrap_or_default();
 
-        let cover_sel = Selector::parse(".infobox img.cover").unwrap();
+        static COVER_SEL: OnceLock<Selector> = OnceLock::new();
+        let cover_sel = selector(".infobox img.cover", &COVER_SEL);
         let cover_url = document
-            .select(&cover_sel)
+            .select(cover_sel)
             .next()
             .and_then(|img| img.value().attr("src"))
             .map(|src| {
@@ -426,6 +481,7 @@ pub async fn search_bangumi_by_id(
             .unwrap_or_default();
 
         BangumiItem {
+            source: "bangumi".to_string(),
             bangumi_id: id.to_string(),
             title,
             cover_url,
@@ -448,10 +504,10 @@ pub async fn search_bangumi_by_id(
             if !row.title.is_empty() {
                 result.title = row.title;
             }
-            if let Some(ref db_cover) = row.cover_url {
-                if !db_cover.is_empty() {
-                    result.cover_url = db_cover.clone();
-                }
+            if let Some(ref db_cover) = row.cover_url
+                && !db_cover.is_empty()
+            {
+                result.cover_url = db_cover.clone();
             }
             row.id
         }
@@ -473,10 +529,20 @@ pub async fn search_bangumi_by_id(
 
             match insert_result {
                 Ok(res) => res.last_insert_id() as u32,
-                Err(_) => return Json(IDSearchResponse { status: -4, data: None }),
+                Err(_) => {
+                    return Json(IDSearchResponse {
+                        status: -4,
+                        data: None,
+                    });
+                }
             }
         }
-        Err(_) => return Json(IDSearchResponse { status: -5, data: None }),
+        Err(_) => {
+            return Json(IDSearchResponse {
+                status: -5,
+                data: None,
+            });
+        }
     };
 
     match sqlx::query_scalar!(
@@ -539,12 +605,32 @@ pub struct LocalSearchQuery {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct LocalSearchItem {
+    pub source: String,
     pub bangumi_id: Option<String>,
+    pub imdb_id: Option<String>,
     pub other_id: Option<u32>,
     pub title: String,
     pub cover: Option<String>,
     pub info: Option<String>,
     pub r#type: Option<String>,
+}
+
+fn media_type_label(source: &str, media_type: i8) -> String {
+    match (source, media_type) {
+        ("imdb", 1) => "IMDb TV".into(),
+        ("imdb", 2) => "IMDb Movie".into(),
+        ("imdb", 9) => "IMDb Game".into(),
+        (_, 1) => "TV".into(),
+        (_, 2) => "剧场版".into(),
+        (_, 3) => "OVA".into(),
+        (_, 4) => "ONA".into(),
+        (_, 5) => "TV SP".into(),
+        (_, 6) => "Music".into(),
+        (_, 7) => "书籍".into(),
+        (_, 9) => "游戏".into(),
+        (_, 10) => "三次元".into(),
+        _ => "其他".into(),
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -572,21 +658,34 @@ pub async fn search_local(
 
         if let Ok(Some(r)) = bangumi {
             results.push(LocalSearchItem {
+                source: "bangumi".into(),
                 bangumi_id: Some(r.external_id),
+                imdb_id: None,
                 other_id: None,
                 title: r.title,
                 cover: r.cover_url,
                 info: Some(format!("ID: {} · 本地缓存", r.id)),
-                r#type: Some(match r.r#type {
-                    1 => "TV".into(),
-                    2 => "剧场版".into(),
-                    3 => "OVA".into(),
-                    4 => "ONA".into(),
-                    5 => "TV SP".into(),
-                    6 => "Music".into(),
-                    7 => "书籍".into(),
-                    _ => "其他".into(),
-                }),
+                r#type: Some(media_type_label("bangumi", r.r#type)),
+            });
+        }
+
+        let imdb = sqlx::query!(
+            "SELECT id, external_id, title, type, cover_url FROM external_media WHERE source = 'imdb' AND id = ?",
+            id
+        )
+        .fetch_optional(&pool)
+        .await;
+
+        if let Ok(Some(r)) = imdb {
+            results.push(LocalSearchItem {
+                source: "imdb".into(),
+                bangumi_id: None,
+                imdb_id: Some(r.external_id),
+                other_id: None,
+                title: r.title,
+                cover: r.cover_url,
+                info: Some(format!("ID: {} · IMDb 本地缓存", r.id)),
+                r#type: Some(media_type_label("imdb", r.r#type)),
             });
         }
 
@@ -599,7 +698,9 @@ pub async fn search_local(
 
         if let Ok(Some(r)) = other {
             results.push(LocalSearchItem {
+                source: "custom".into(),
                 bangumi_id: None,
+                imdb_id: None,
                 other_id: Some(r.id),
                 title: r.name.unwrap_or_else(|| "未命名条目".into()),
                 cover: r.cover_url,
@@ -622,7 +723,7 @@ pub async fn search_local(
         let keyword = keyword.trim();
         if !keyword.is_empty() {
             let page = params.page.unwrap_or(1).max(1);
-            let page_size = params.page_size.unwrap_or(20).max(1).min(100);
+            let page_size = params.page_size.unwrap_or(20).clamp(1, 100);
             let like_pattern = format!("%{}%", keyword);
 
             let bangumi_count = sqlx::query_scalar!(
@@ -641,7 +742,15 @@ pub async fn search_local(
             .await
             .unwrap_or(0) as i64;
 
-            let total = bangumi_count + other_count;
+            let imdb_count = sqlx::query_scalar!(
+                "SELECT COUNT(*) as cnt FROM external_media WHERE source = 'imdb' AND title LIKE ?",
+                like_pattern
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap_or(0) as i64;
+
+            let total = bangumi_count + imdb_count + other_count;
 
             let offset = (page - 1) * page_size;
             let bangumi_rows = sqlx::query!(
@@ -656,21 +765,38 @@ pub async fn search_local(
             if let Ok(rows) = bangumi_rows {
                 for r in rows {
                     results.push(LocalSearchItem {
+                        source: "bangumi".into(),
                         bangumi_id: Some(r.external_id),
+                        imdb_id: None,
                         other_id: None,
                         title: r.title,
                         cover: r.cover_url,
                         info: Some(format!("ID: {} · 本地缓存", r.id)),
-                        r#type: Some(match r.r#type {
-                            1 => "TV".into(),
-                            2 => "剧场版".into(),
-                            3 => "OVA".into(),
-                            4 => "ONA".into(),
-                            5 => "TV SP".into(),
-                            6 => "Music".into(),
-                            7 => "书籍".into(),
-                            _ => "其他".into(),
-                        }),
+                        r#type: Some(media_type_label("bangumi", r.r#type)),
+                    });
+                }
+            }
+
+            let imdb_rows = sqlx::query!(
+                "SELECT id, external_id, title, type, cover_url FROM external_media WHERE source = 'imdb' AND title LIKE ? ORDER BY id LIMIT ? OFFSET ?",
+                like_pattern,
+                page_size as i64,
+                offset as i64
+            )
+            .fetch_all(&pool)
+            .await;
+
+            if let Ok(rows) = imdb_rows {
+                for r in rows {
+                    results.push(LocalSearchItem {
+                        source: "imdb".into(),
+                        bangumi_id: None,
+                        imdb_id: Some(r.external_id),
+                        other_id: None,
+                        title: r.title,
+                        cover: r.cover_url,
+                        info: Some(format!("ID: {} · IMDb 本地缓存", r.id)),
+                        r#type: Some(media_type_label("imdb", r.r#type)),
                     });
                 }
             }
@@ -687,7 +813,9 @@ pub async fn search_local(
             if let Ok(rows) = other_rows {
                 for r in rows {
                     results.push(LocalSearchItem {
+                        source: "custom".into(),
                         bangumi_id: None,
+                        imdb_id: None,
                         other_id: Some(r.id),
                         title: r.name.unwrap_or_else(|| "未命名条目".into()),
                         cover: r.cover_url,

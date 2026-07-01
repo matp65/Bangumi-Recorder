@@ -1,15 +1,17 @@
 use axum::{
+    Json,
     extract::{Extension, Path, State},
     http::StatusCode,
-    Json,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::mysql::MySqlPool;
 use sqlx::Row;
+use sqlx::mysql::MySqlPool;
 
+use super::response::{
+    ApiResponse, bad_request, internal_error, not_found, success, success_empty,
+};
+use crate::api::api_token::{ALL_COMBINED, PERM_LABELS, hash_token};
 use crate::auth_bearer::AuthUser;
-use crate::api::api_token::{hash_token, PERM_LABELS, ALL_COMBINED};
-use super::response::{success, success_empty, bad_request, internal_error, not_found, ApiResponse};
 
 #[derive(Serialize)]
 pub struct TokenListItem {
@@ -76,7 +78,7 @@ pub async fn list_tokens(
 ) -> (StatusCode, Json<ApiResponse<Vec<TokenListItem>>>) {
     let rows = sqlx::query(
         "SELECT id, name, permissions, is_active, last_used_at, created_at, updated_at \
-         FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC"
+         FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC",
     )
     .bind(auth_user.user_id)
     .fetch_all(&pool)
@@ -93,12 +95,18 @@ pub async fn list_tokens(
     let items: Vec<TokenListItem> = rows
         .iter()
         .map(|r| {
-            let last_used: Option<String> = r.try_get("last_used_at").ok()
-                .and_then(|v: Option<chrono::NaiveDateTime>| v.map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string()));
-            let created: String = r.try_get::<chrono::NaiveDateTime, _>("created_at")
+            let last_used: Option<String> =
+                r.try_get("last_used_at")
+                    .ok()
+                    .and_then(|v: Option<chrono::NaiveDateTime>| {
+                        v.map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                    });
+            let created: String = r
+                .try_get::<chrono::NaiveDateTime, _>("created_at")
                 .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                 .unwrap_or_default();
-            let updated: String = r.try_get::<chrono::NaiveDateTime, _>("updated_at")
+            let updated: String = r
+                .try_get::<chrono::NaiveDateTime, _>("updated_at")
                 .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                 .unwrap_or_default();
             let is_active: i8 = r.try_get("is_active").unwrap_or(0);
@@ -137,7 +145,7 @@ pub async fn create_token(
     let token_hash = hash_token(&raw_token);
 
     let result = sqlx::query(
-        "INSERT INTO api_tokens (user_id, name, token_hash, permissions) VALUES (?, ?, ?, ?)"
+        "INSERT INTO api_tokens (user_id, name, token_hash, permissions) VALUES (?, ?, ?, ?)",
     )
     .bind(auth_user.user_id)
     .bind(&name)
@@ -170,13 +178,11 @@ pub async fn update_token(
     Json(payload): Json<UpdateTokenRequest>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
     // Verify the token belongs to this user
-    let existing = sqlx::query(
-        "SELECT id FROM api_tokens WHERE id = ? AND user_id = ?"
-    )
-    .bind(id)
-    .bind(auth_user.user_id)
-    .fetch_optional(&pool)
-    .await;
+    let existing = sqlx::query("SELECT id FROM api_tokens WHERE id = ? AND user_id = ?")
+        .bind(id)
+        .bind(auth_user.user_id)
+        .fetch_optional(&pool)
+        .await;
 
     match existing {
         Ok(Some(_)) => {}
@@ -203,28 +209,26 @@ pub async fn update_token(
         }
     }
 
-    if let Some(permissions) = payload.permissions {
-        if let Err(e) = sqlx::query("UPDATE api_tokens SET permissions = ? WHERE id = ?")
+    if let Some(permissions) = payload.permissions
+        && let Err(e) = sqlx::query("UPDATE api_tokens SET permissions = ? WHERE id = ?")
             .bind(permissions as i64)
             .bind(id)
             .execute(&pool)
             .await
-        {
-            log::error!("Failed to update token permissions: {:?}", e);
-            return internal_error("Failed to update token");
-        }
+    {
+        log::error!("Failed to update token permissions: {:?}", e);
+        return internal_error("Failed to update token");
     }
 
-    if let Some(is_active) = payload.is_active {
-        if let Err(e) = sqlx::query("UPDATE api_tokens SET is_active = ? WHERE id = ?")
+    if let Some(is_active) = payload.is_active
+        && let Err(e) = sqlx::query("UPDATE api_tokens SET is_active = ? WHERE id = ?")
             .bind(is_active as i8)
             .bind(id)
             .execute(&pool)
             .await
-        {
-            log::error!("Failed to update token active status: {:?}", e);
-            return internal_error("Failed to update token");
-        }
+    {
+        log::error!("Failed to update token active status: {:?}", e);
+        return internal_error("Failed to update token");
     }
 
     success_empty()

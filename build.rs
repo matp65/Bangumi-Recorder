@@ -24,7 +24,11 @@ fn main() {
 
     println!(
         "cargo:rustc-env=BUILD_GIT_VERSION={}",
-        if dirty { format!("{}+dirty", git_hash) } else { git_hash }
+        if dirty {
+            format!("{}+dirty", git_hash)
+        } else {
+            git_hash
+        }
     );
 
     let rustc_version = Command::new("rustc")

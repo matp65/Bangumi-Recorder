@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT ordinal, watched, progress_seconds, duration_seconds, completed_at, updated_at\n        FROM episode_records\n        WHERE recording_id = ?\n        ",
+  "query": "\n            SELECT ordinal, watched, progress_seconds, duration_seconds, completed_at, updated_at\n            FROM episode_records\n            WHERE recording_id = ?\n            ",
   "describe": {
     "columns": [
       {
@@ -70,5 +70,5 @@
       false
     ]
   },
-  "hash": "b95b3ae4bc47e47e97de6fcbac47e7ce38327b8179a040bbf539d79d74541ac4"
+  "hash": "fb7c5e6313cd507e0bee644f0f8300a8f48f2eddc90ff662bc801b697164ef54"
 }

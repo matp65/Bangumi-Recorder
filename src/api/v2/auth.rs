@@ -1,13 +1,12 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use sqlx::MySqlPool;
 
-use crate::auth_bearer::{
-    LoginRequest, RegisterRequest,
-    verify_password, hash_password, hash_api_token,
-};
+use super::response::{ApiResponse, conflict, forbidden, internal_error, success, unauthorized};
 use crate::api::api_token::ALL_COMBINED;
-use super::response::{success, conflict, internal_error, unauthorized, forbidden, ApiResponse};
+use crate::auth_bearer::{
+    LoginRequest, RegisterRequest, hash_api_token, hash_password, verify_password,
+};
 
 #[derive(Serialize)]
 pub struct LoginData {
@@ -26,9 +25,13 @@ pub struct ConfigData {
     pub register_need_token: bool,
 }
 
-fn build_claims(user_id: i64, username: String, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
+fn build_claims(
+    user_id: i64,
+    username: String,
+    secret: &str,
+) -> Result<String, jsonwebtoken::errors::Error> {
     use chrono::{Duration, Utc};
-    use jsonwebtoken::{encode, EncodingKey, Header};
+    use jsonwebtoken::{EncodingKey, Header, encode};
 
     #[derive(Debug, Serialize, Deserialize)]
     struct Claims {
@@ -115,7 +118,8 @@ pub async fn register(
 
     let register_need_token = std::env::var("REGISTER_NEED_TOKEN")
         .unwrap_or_else(|_| "false".to_string())
-        .to_lowercase() == "true";
+        .to_lowercase()
+        == "true";
 
     if register_need_token {
         let token = std::env::var("REGISTER_TOKEN").unwrap_or_default();
@@ -126,7 +130,9 @@ pub async fn register(
 
     let config_register_token = std::env::var("REGISTER_TOKEN").unwrap_or_default();
 
-    if register_need_token && payload.register_token.as_deref() != Some(config_register_token.as_str()) {
+    if register_need_token
+        && payload.register_token.as_deref() != Some(config_register_token.as_str())
+    {
         return unauthorized("Invalid registration token");
     }
 
@@ -183,7 +189,7 @@ pub async fn register(
 
     // Create default API token with all permissions
     if let Err(e) = sqlx::query(
-        "INSERT INTO api_tokens (user_id, name, token_hash, permissions) VALUES (?, ?, ?, ?)"
+        "INSERT INTO api_tokens (user_id, name, token_hash, permissions) VALUES (?, ?, ?, ?)",
     )
     .bind(user_id)
     .bind("Default Token")
@@ -192,10 +198,18 @@ pub async fn register(
     .execute(&pool)
     .await
     {
-        log::error!("Failed to create default API token for user {}: {:?}", user_id, e);
+        log::error!(
+            "Failed to create default API token for user {}: {:?}",
+            user_id,
+            e
+        );
     }
 
-    let token = match build_claims(user_id, username, &std::env::var("JWT_SECRET").expect("JWT_SECRET must be set")) {
+    let token = match build_claims(
+        user_id,
+        username,
+        &std::env::var("JWT_SECRET").expect("JWT_SECRET must be set"),
+    ) {
         Ok(token) => token,
         Err(_) => {
             return internal_error("Failed to generate token");

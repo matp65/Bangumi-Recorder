@@ -1,22 +1,23 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
 
-use crate::api::open::api_token::{require_token_with_perm, PERM_READ, PERM_WRITE};
-use crate::api::v2::search::{
-    search_bangumi as v2_search_bangumi,
-    get_bangumi as v2_get_bangumi,
-    search_local as v2_search_local,
+use crate::api::open::api_token::{PERM_READ, PERM_WRITE, require_token_with_perm};
+use crate::api::v2::response::{
+    ApiResponse, forbidden as v2_forbidden, unauthorized as v2_unauthorized,
 };
-use crate::api::v2::response::{unauthorized as v2_unauthorized, forbidden as v2_forbidden, ApiResponse};
+use crate::api::v2::search::{
+    get_bangumi as v2_get_bangumi, get_imdb as v2_get_imdb, search_bangumi as v2_search_bangumi,
+    search_imdb as v2_search_imdb, search_local as v2_search_local,
+};
 
 pub use crate::api::search::BangumiItem;
-pub use crate::api::v2::search::LocalSearchResult;
 pub use crate::api::v2::search::BangumiEpisodeMeta;
+pub use crate::api::v2::search::LocalSearchResult;
 
 #[derive(Deserialize)]
 pub struct SearchQuery {
@@ -26,8 +27,23 @@ pub struct SearchQuery {
 }
 
 #[derive(Deserialize)]
+pub struct ImdbSearchQuery {
+    pub q: Option<String>,
+    pub page: Option<i32>,
+    pub use_api: Option<bool>,
+    pub token: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct BangumiQuery {
     pub force: Option<bool>,
+    pub token: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct ImdbQuery {
+    pub force: Option<bool>,
+    pub use_api: Option<bool>,
     pub token: Option<String>,
 }
 
@@ -40,7 +56,10 @@ pub struct LocalSearchParams {
     pub token: Option<String>,
 }
 
-async fn verify_token<T: Serialize>(pool: &MySqlPool, token: Option<&str>) -> Result<(), (StatusCode, Json<ApiResponse<T>>)> {
+async fn verify_token<T: Serialize>(
+    pool: &MySqlPool,
+    token: Option<&str>,
+) -> Result<(), (StatusCode, Json<ApiResponse<T>>)> {
     match require_token_with_perm(pool, token, &[PERM_READ, PERM_WRITE]).await {
         Ok(_) => Ok(()),
         Err(StatusCode::UNAUTHORIZED) => Err(v2_unauthorized("Invalid API token")),
@@ -53,7 +72,10 @@ async fn verify_token<T: Serialize>(pool: &MySqlPool, token: Option<&str>) -> Re
 pub async fn search_bangumi(
     State(pool): State<MySqlPool>,
     Query(params): Query<SearchQuery>,
-) -> (StatusCode, Json<ApiResponse<Vec<crate::api::search::BangumiSearchItem>>>) {
+) -> (
+    StatusCode,
+    Json<ApiResponse<Vec<crate::api::search::BangumiSearchItem>>>,
+) {
     if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
         return e;
     }
@@ -63,6 +85,50 @@ pub async fn search_bangumi(
         Query(crate::api::v2::search::SearchQuery {
             q: params.q,
             page: params.page,
+        }),
+    )
+    .await
+}
+
+/// GET /api/v2/open/imdb/search?q=keyword&page=1&use_api=false&token=xxx
+pub async fn search_imdb(
+    State(pool): State<MySqlPool>,
+    Query(params): Query<ImdbSearchQuery>,
+) -> (
+    StatusCode,
+    Json<ApiResponse<Vec<crate::api::imdb::ImdbSearchItem>>>,
+) {
+    if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
+        return e;
+    }
+
+    v2_search_imdb(
+        State(pool),
+        Query(crate::api::v2::search::ImdbSearchParams {
+            q: params.q,
+            page: params.page,
+            use_api: params.use_api,
+        }),
+    )
+    .await
+}
+
+/// GET /api/v2/open/imdb/:id?force=true&use_api=false&token=xxx
+pub async fn get_imdb(
+    State(pool): State<MySqlPool>,
+    Path(id): Path<String>,
+    Query(params): Query<ImdbQuery>,
+) -> (StatusCode, Json<ApiResponse<crate::api::imdb::ImdbItem>>) {
+    if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
+        return e;
+    }
+
+    v2_get_imdb(
+        State(pool),
+        Path(id),
+        Query(crate::api::v2::search::ImdbQuery {
+            force: params.force,
+            use_api: params.use_api,
         }),
     )
     .await

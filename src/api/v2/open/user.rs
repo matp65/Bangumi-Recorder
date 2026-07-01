@@ -1,10 +1,14 @@
-use axum::{extract::{Query, State}, http::StatusCode, Json};
+use axum::{
+    Json,
+    extract::{Query, State},
+    http::StatusCode,
+};
 use sqlx::mysql::MySqlPool;
 
-use crate::api::open::api_token::{require_token_with_perm, PERM_VIEW_INFO};
+use crate::api::open::api_token::{PERM_VIEW_INFO, require_token_with_perm};
 use crate::api::open::user::GetTokenQuery;
 use crate::api::user::UserInfo;
-use crate::api::v2::response::{success, unauthorized, forbidden, ApiResponse};
+use crate::api::v2::response::{ApiResponse, forbidden, success, unauthorized};
 
 pub async fn get_info(
     State(pool): State<MySqlPool>,

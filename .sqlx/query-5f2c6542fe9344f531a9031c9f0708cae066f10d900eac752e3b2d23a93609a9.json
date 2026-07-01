@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT \n            r.id,\n            r.bangumi_id AS local_bangumi_id,\n            r.recorder,\n            r.status,\n            r.is_delete,\n            r.updated_at\n        FROM recordings r\n        WHERE r.user_id = ? AND r.other_id IS NOT NULL\n        ",
+  "query": "SELECT id, bangumi_id, external_media_id, other_id, recorder, status, is_delete, updated_at FROM recordings WHERE user_id = ? AND id = ? AND is_delete = 0",
   "describe": {
     "columns": [
       {
@@ -14,7 +14,7 @@
       },
       {
         "ordinal": 1,
-        "name": "local_bangumi_id",
+        "name": "bangumi_id",
         "type_info": {
           "type": "Long",
           "flags": "MULTIPLE_KEY | UNSIGNED",
@@ -23,6 +23,24 @@
       },
       {
         "ordinal": 2,
+        "name": "external_media_id",
+        "type_info": {
+          "type": "Long",
+          "flags": "MULTIPLE_KEY | UNSIGNED",
+          "max_size": 10
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "other_id",
+        "type_info": {
+          "type": "Long",
+          "flags": "MULTIPLE_KEY | UNSIGNED",
+          "max_size": 10
+        }
+      },
+      {
+        "ordinal": 4,
         "name": "recorder",
         "type_info": {
           "type": "VarString",
@@ -31,7 +49,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 5,
         "name": "status",
         "type_info": {
           "type": "Tiny",
@@ -40,7 +58,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 6,
         "name": "is_delete",
         "type_info": {
           "type": "Tiny",
@@ -49,7 +67,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 7,
         "name": "updated_at",
         "type_info": {
           "type": "Datetime",
@@ -59,10 +77,12 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       false,
+      true,
+      true,
       true,
       true,
       false,
@@ -70,5 +90,5 @@
       false
     ]
   },
-  "hash": "72320325c9c985d49f58fd31f8bac857ddfffbdeed931e071200d0c0adcd3cdc"
+  "hash": "5f2c6542fe9344f531a9031c9f0708cae066f10d900eac752e3b2d23a93609a9"
 }

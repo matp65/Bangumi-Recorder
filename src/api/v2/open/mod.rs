@@ -1,5 +1,5 @@
-pub mod record;
-pub mod user;
-pub mod search;
 pub mod episodes;
+pub mod record;
+pub mod search;
 pub mod sync;
+pub mod user;

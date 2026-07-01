@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "\n                UPDATE external_media_detailed\n                SET author = ?, release_date = ?, episodes = ?, description = ?, updated_at = CURRENT_TIMESTAMP\n                WHERE media_id = ?\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "4b3b9adcae2ca3f57ae29e284973520fe6105479dab91a78f652d526db36c873"
+}

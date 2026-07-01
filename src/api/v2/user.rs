@@ -1,19 +1,17 @@
 use axum::{
+    Json,
     extract::{Extension, State},
     http::StatusCode,
-    Json,
 };
 use serde::Serialize;
 use sqlx::mysql::MySqlPool;
 
-use crate::auth_bearer::AuthUser;
+use super::response::{ApiResponse, bad_request, internal_error, success, success_empty};
 use crate::api::user::{
-    UserInfo, UpdateUserInfo, UpdatePasswordRequest,
-    get_info as v1_get_info,
-    update_info as v1_update_info,
-    update_password as v1_update_password,
+    UpdatePasswordRequest, UpdateUserInfo, UserInfo, get_info as v1_get_info,
+    update_info as v1_update_info, update_password as v1_update_password,
 };
-use super::response::{success, success_empty, bad_request, internal_error, ApiResponse};
+use crate::auth_bearer::AuthUser;
 
 #[derive(Serialize)]
 pub struct TokenData {
@@ -47,7 +45,8 @@ pub async fn update_password(
     Extension(auth_user): Extension<AuthUser>,
     Json(payload): Json<UpdatePasswordRequest>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
-    let v1_resp = v1_update_password(State(pool.clone()), Extension(auth_user), Json(payload)).await;
+    let v1_resp =
+        v1_update_password(State(pool.clone()), Extension(auth_user), Json(payload)).await;
     let inner = v1_resp.0;
     if inner.status == 0 {
         success_empty()
@@ -70,7 +69,7 @@ pub async fn regenerate_api_token(
 
     // Create a new token entry in api_tokens table with all permissions
     match sqlx::query(
-        "INSERT INTO api_tokens (user_id, name, token_hash, permissions) VALUES (?, ?, ?, ?)"
+        "INSERT INTO api_tokens (user_id, name, token_hash, permissions) VALUES (?, ?, ?, ?)",
     )
     .bind(auth_user.user_id)
     .bind("Regenerated Token")
@@ -79,7 +78,9 @@ pub async fn regenerate_api_token(
     .execute(&pool)
     .await
     {
-        Ok(_) => success(TokenData { api_token: raw_token }),
+        Ok(_) => success(TokenData {
+            api_token: raw_token,
+        }),
         Err(e) => {
             log::error!("Failed to regenerate token: {:?}", e);
             internal_error("Failed to regenerate token")

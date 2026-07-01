@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { api, type BangumiSearchItem, type LocalSearchItem } from '../api'
+import { api, type BangumiSearchItem, type ImdbSearchItem, type LocalSearchItem } from '../api'
 import { Message } from '@arco-design/web-vue'
 import { IconSearch, IconPlus } from '@arco-design/web-vue/es/icon'
 
@@ -9,11 +9,13 @@ const router = useRouter()
 
 const activeTab = ref<'search' | 'custom'>('search')
 const useLocal = ref(false)
+const onlineSource = ref<'bangumi' | 'imdb'>('bangumi')
+const imdbUseApi = ref(false)
 const keyword = ref('')
 const idSearch = ref('')
 const searching = ref(false)
 const adding = ref<Record<string, boolean>>({})
-const results = ref<(BangumiSearchItem | LocalSearchItem)[]>([])
+const results = ref<(BangumiSearchItem | ImdbSearchItem | LocalSearchItem)[]>([])
 const hasSearched = ref(false)
 
 const currentPage = ref(1)
@@ -39,6 +41,8 @@ const typeLabels: Record<number, string> = {
   6: 'Music',
   7: '书籍',
   8: '其他',
+  9: '游戏',
+  10: '三次元',
 }
 
 const statusLabels: Record<number, string> = {
@@ -57,37 +61,57 @@ const statusOptions = [
   { value: 4, label: '抛弃', color: 'red' },
 ]
 
-function isBangumi(item: BangumiSearchItem | LocalSearchItem): item is BangumiSearchItem {
+function isBangumi(item: BangumiSearchItem | ImdbSearchItem | LocalSearchItem): item is BangumiSearchItem {
   return 'alias' in item
 }
 
-function getItemBangumiId(item: BangumiSearchItem | LocalSearchItem) {
-  if (isBangumi(item)) return item.bangumi_id
-  return item.bangumi_id || null
+function isImdb(item: BangumiSearchItem | ImdbSearchItem | LocalSearchItem): item is ImdbSearchItem {
+  return 'imdb_id' in item && !!item.imdb_id && (item as any).source === 'imdb'
 }
 
-function getItemTitle(item: BangumiSearchItem | LocalSearchItem) {
+function getItemSource(item: BangumiSearchItem | ImdbSearchItem | LocalSearchItem) {
+  if (isBangumi(item)) return 'bangumi'
+  if (isImdb(item)) return 'imdb'
+  return item.source
+}
+
+function getItemBangumiId(item: BangumiSearchItem | ImdbSearchItem | LocalSearchItem) {
+  if (isBangumi(item)) return item.bangumi_id
+  return 'bangumi_id' in item ? item.bangumi_id || null : null
+}
+
+function getItemImdbId(item: BangumiSearchItem | ImdbSearchItem | LocalSearchItem) {
+  if (isImdb(item)) return item.imdb_id
+  return 'imdb_id' in item ? item.imdb_id || null : null
+}
+
+function getItemKey(item: BangumiSearchItem | ImdbSearchItem | LocalSearchItem) {
+  return getItemBangumiId(item) || getItemImdbId(item) || `other_${(item as LocalSearchItem).other_id || ''}`
+}
+
+function getItemTitle(item: BangumiSearchItem | ImdbSearchItem | LocalSearchItem) {
   return item.title
 }
 
-function getItemCover(item: BangumiSearchItem | LocalSearchItem) {
+function getItemCover(item: BangumiSearchItem | ImdbSearchItem | LocalSearchItem) {
   if (isBangumi(item)) return item.cover
   return item.cover || undefined
 }
 
-function getItemType(item: BangumiSearchItem | LocalSearchItem) {
+function getItemType(item: BangumiSearchItem | ImdbSearchItem | LocalSearchItem) {
   if (isBangumi(item)) return typeLabels[item.type] || '其他'
+  if (isImdb(item)) return `IMDb ${typeLabels[item.type] || '其他'}`
   return item.type || '其他'
 }
 
-function getItemInfo(item: BangumiSearchItem | LocalSearchItem) {
+function getItemInfo(item: BangumiSearchItem | ImdbSearchItem | LocalSearchItem) {
   if (isBangumi(item)) return item.info || item.alias || ''
   return item.info || ''
 }
 
 async function doSearch() {
   if (!keyword.value.trim()) {
-    Message.warning('请输入番剧名称')
+    Message.warning('请输入搜索关键词')
     return
   }
   searching.value = true
@@ -107,12 +131,14 @@ async function doSearch() {
         totalResults.value = 0
       }
     } else {
-      const res = await api.searchBangumi(keyword.value.trim(), currentPage.value)
+      const res = onlineSource.value === 'imdb'
+        ? await api.searchImdb(keyword.value.trim(), currentPage.value, imdbUseApi.value)
+        : await api.searchBangumi(keyword.value.trim(), currentPage.value)
       if (res.status === 0 && res.data) {
         results.value = res.data
         totalResults.value = 0
         if (res.data.length === 0 && currentPage.value === 1) {
-          Message.info('未找到相关番剧')
+          Message.info('未找到相关条目')
         }
       } else {
         Message.error('搜索失败')
@@ -140,8 +166,9 @@ async function handlePageChange(page: number) {
 }
 
 async function handleIdSearch() {
-  const id = parseInt(idSearch.value.trim())
-  if (!id || isNaN(id)) {
+  const rawId = idSearch.value.trim()
+  const id = parseInt(rawId)
+  if (!rawId || (onlineSource.value === 'bangumi' && (!id || isNaN(id))) || (useLocal.value && (!id || isNaN(id)))) {
     Message.warning('请输入有效的 ID')
     return
   }
@@ -160,21 +187,43 @@ async function handleIdSearch() {
         totalResults.value = 0
       }
     } else {
-      const res = await api.searchBangumiById(id)
-      if (res.status === 0 && res.data) {
-        results.value = [{
-          bangumi_id: res.data.bangumi_id,
-          title: res.data.title,
-          alias: '',
-          cover: res.data.cover_url,
-          info: `${typeLabels[res.data.type] || '其他'} · ${res.data.episodes}话`,
-          type: res.data.type,
-        }]
-        totalResults.value = 0
+      if (onlineSource.value === 'imdb') {
+        const res = await api.searchImdbById(rawId, false, imdbUseApi.value)
+        if (res.status === 0 && res.data) {
+          results.value = [{
+            source: 'imdb',
+            imdb_id: res.data.imdb_id,
+            external_id: res.data.external_id,
+            title: res.data.title,
+            year: res.data.release_date?.slice(0, 4) || null,
+            cover: res.data.cover_url,
+            info: [typeLabels[res.data.type] || '其他', res.data.author].filter(Boolean).join(' · '),
+            type: res.data.type,
+          }]
+          totalResults.value = 0
+        } else {
+          Message.error('未找到该 IMDb 条目')
+          results.value = []
+          totalResults.value = 0
+        }
       } else {
-        Message.error('未找到该番剧')
-        results.value = []
-        totalResults.value = 0
+        const res = await api.searchBangumiById(id)
+        if (res.status === 0 && res.data) {
+          results.value = [{
+            source: 'bangumi',
+            bangumi_id: res.data.bangumi_id,
+            title: res.data.title,
+            alias: '',
+            cover: res.data.cover_url,
+            info: `${typeLabels[res.data.type] || '其他'} · ${res.data.episodes}话`,
+            type: res.data.type,
+          }]
+          totalResults.value = 0
+        } else {
+          Message.error('未找到该 Bangumi 条目')
+          results.value = []
+          totalResults.value = 0
+        }
       }
     }
   } catch {
@@ -186,9 +235,10 @@ async function handleIdSearch() {
   }
 }
 
-async function handleAdd(item: BangumiSearchItem | LocalSearchItem) {
+async function handleAdd(item: BangumiSearchItem | ImdbSearchItem | LocalSearchItem) {
   const id = getItemBangumiId(item)
-  const key = id || `other_${Date.now()}`
+  const imdbId = getItemImdbId(item)
+  const key = getItemKey(item) || `other_${Date.now()}`
   adding.value[key] = true
   try {
     if (isBangumi(item)) {
@@ -202,7 +252,16 @@ async function handleAdd(item: BangumiSearchItem | LocalSearchItem) {
       } else {
         Message.error(res.message || '添加失败')
       }
-    } else if (item.other_id) {
+    } else if (imdbId) {
+      const res = await api.addRecord({ source: 'imdb', external_id: imdbId, user_status: 2, use_api: imdbUseApi.value })
+      if (res.status === 0) {
+        Message.success(`已添加「${item.title}」到追踪列表`)
+      } else if (res.message?.includes('already exists')) {
+        Message.warning(`「${item.title}」已经在追踪列表中`)
+      } else {
+        Message.error(res.message || '添加失败')
+      }
+    } else if ('other_id' in item && item.other_id) {
       const res = await api.addRecord({ other_id: item.other_id, user_status: 2 })
       if (res.status === 0) {
         Message.success(`已添加「${item.title}」到追番列表`)
@@ -211,7 +270,7 @@ async function handleAdd(item: BangumiSearchItem | LocalSearchItem) {
       } else {
         Message.error(res.message || '添加失败')
       }
-    } else if (item.bangumi_id) {
+    } else if ('bangumi_id' in item && item.bangumi_id) {
       const res = await api.addRecord({ bangumi_id: parseInt(item.bangumi_id), user_status: 2 })
       if (res.status === 0) {
         Message.success(`已添加「${item.title}」到追番列表`)
@@ -262,16 +321,33 @@ async function handleAddCustom() {
 function goDetail(bangumiId: string) {
   router.push({ name: 'Detail', params: { bangumi_id: bangumiId } })
 }
+
+function goItemDetail(item: BangumiSearchItem | ImdbSearchItem | LocalSearchItem) {
+  const bangumiId = getItemBangumiId(item)
+  if (bangumiId) {
+    router.push({ name: 'Detail', params: { bangumi_id: bangumiId } })
+    return
+  }
+  const imdbId = getItemImdbId(item)
+  if (imdbId) {
+    router.push({ name: 'ImdbDetail', params: { imdb_id: imdbId } })
+  }
+}
+
+function canOpenDetail(item: BangumiSearchItem | ImdbSearchItem | LocalSearchItem) {
+  return !!getItemBangumiId(item) || !!getItemImdbId(item)
+}
 </script>
 
 <template>
   <div>
     <a-tabs v-model:active-key="activeTab" type="card" style="margin-bottom: 24px">
-      <a-tab-pane key="search" title="搜索番剧">
+      <a-tab-pane key="search" title="搜索条目">
         <div class="search-hero">
-          <h1>{{ useLocal ? '本地数据搜索' : '搜索番剧' }}</h1>
-          <p v-if="useLocal">搜索本地缓存的番剧和自定义条目</p>
-          <p v-else>搜索 Bangumi 上的番剧，添加到你到追番列表</p>
+          <h1>{{ useLocal ? '本地数据搜索' : onlineSource === 'imdb' ? '搜索 IMDb' : '搜索 Bangumi' }}</h1>
+          <p v-if="useLocal">搜索本地缓存的 Bangumi、IMDb 和自定义条目</p>
+          <p v-else-if="onlineSource === 'imdb'">搜索 IMDb 电影、剧集等条目，添加到你的追踪列表</p>
+          <p v-else>搜索 Bangumi 上的动画、书籍、游戏等条目，添加到你的追踪列表</p>
 
           <div style="display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 16px">
             <span style="font-size: 14px; color: #86909c">在线搜索</span>
@@ -281,10 +357,24 @@ function goDetail(bangumiId: string) {
             </a-switch>
           </div>
 
+          <div v-if="!useLocal" style="display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap">
+            <a-radio-group
+              type="button"
+              :model-value="onlineSource"
+              @change="(v: any) => onlineSource = v"
+            >
+              <a-radio value="bangumi">Bangumi</a-radio>
+              <a-radio value="imdb">IMDb</a-radio>
+            </a-radio-group>
+            <a-checkbox v-if="onlineSource === 'imdb'" v-model="imdbUseApi">
+              使用 OMDb API
+            </a-checkbox>
+          </div>
+
           <div class="search-input-wrapper">
             <a-input-search
               v-model="keyword"
-              :placeholder="useLocal ? '输入关键词搜索本地缓存...' : '输入番剧名称，如「Re:0」「鬼灭之刃」'"
+              :placeholder="useLocal ? '输入关键词搜索本地缓存...' : onlineSource === 'imdb' ? '输入 IMDb 关键词，如 Interstellar' : '输入关键词，如「Re:0」「鬼灭之刃」'"
               size="large"
               :search-icon="IconSearch"
               :loading="searching"
@@ -299,7 +389,7 @@ function goDetail(bangumiId: string) {
             <span style="font-size: 14px; color: #86909c">或输入 ID:</span>
             <a-input
               v-model="idSearch"
-              :placeholder="useLocal ? '本地条目 ID...' : 'Bangumi ID，如 425998'"
+              :placeholder="useLocal ? '本地条目 ID...' : onlineSource === 'imdb' ? 'IMDb ID，如 tt0816692' : 'Bangumi ID，如 425998'"
               :style="{ width: '200px' }"
               size="large"
               @press-enter="handleIdSearch"
@@ -313,17 +403,17 @@ function goDetail(bangumiId: string) {
 
         <a-spin :loading="searching" style="min-height: 200px">
           <div v-if="hasSearched && results.length === 0" style="text-align: center; padding: 40px 0">
-            <a-empty description="未找到相关番剧，换个关键词试试" />
+            <a-empty description="未找到相关条目，换个关键词试试" />
           </div>
 
           <div class="card-grid" v-if="results.length > 0">
             <a-card
               v-for="item in results"
-              :key="getItemBangumiId(item) || `other_${(item as any).other_id || ''}`"
+              :key="getItemKey(item)"
               hoverable
               :body-style="{ padding: '16px' }"
-              @click="getItemBangumiId(item) && goDetail(getItemBangumiId(item)!)"
-              :style="{ cursor: getItemBangumiId(item) ? 'pointer' : 'default' }"
+              @click="canOpenDetail(item) && goItemDetail(item)"
+              :style="{ cursor: canOpenDetail(item) ? 'pointer' : 'default' }"
             >
               <div style="display: flex; gap: 12px">
                 <div style="flex-shrink: 0; width: 80px">
@@ -346,7 +436,8 @@ function goDetail(bangumiId: string) {
                     <span style="font-weight: 600; font-size: 14px; color: #1d2129; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
                       {{ getItemTitle(item) }}
                     </span>
-                    <a-tag v-if="!isBangumi(item) && (item as LocalSearchItem).other_id" color="purple" size="small">自定义</a-tag>
+                    <a-tag v-if="getItemSource(item) === 'imdb'" color="orangered" size="small">IMDb</a-tag>
+                    <a-tag v-else-if="!isBangumi(item) && (item as LocalSearchItem).other_id" color="purple" size="small">自定义</a-tag>
                   </div>
                   <div v-if="isBangumi(item) && (item as BangumiSearchItem).alias" style="font-size: 12px; color: #86909c; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
                     {{ (item as BangumiSearchItem).alias }}
@@ -357,10 +448,10 @@ function goDetail(bangumiId: string) {
                   <a-button
                     type="primary"
                     size="small"
-                    :loading="adding[getItemBangumiId(item) || `other_${(item as any).other_id || ''}`]"
+                    :loading="adding[getItemKey(item)]"
                     @click.stop="handleAdd(item)"
                   >
-                    添加追番
+                    添加追踪
                   </a-button>
                 </div>
               </div>

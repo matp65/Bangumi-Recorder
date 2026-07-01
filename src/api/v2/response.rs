@@ -1,4 +1,4 @@
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -12,29 +12,41 @@ pub struct ApiResponse<T: Serialize> {
 // --- success: HTTP 200 ---
 
 pub fn success<T: Serialize>(data: T) -> (StatusCode, Json<ApiResponse<T>>) {
-    (StatusCode::OK, Json(ApiResponse {
-        status: 0,
-        data: Some(data),
-        message: None,
-    }))
+    (
+        StatusCode::OK,
+        Json(ApiResponse {
+            status: 0,
+            data: Some(data),
+            message: None,
+        }),
+    )
 }
 
 pub fn success_empty() -> (StatusCode, Json<ApiResponse<()>>) {
-    (StatusCode::OK, Json(ApiResponse {
-        status: 0,
-        data: None,
-        message: None,
-    }))
+    (
+        StatusCode::OK,
+        Json(ApiResponse {
+            status: 0,
+            data: None,
+            message: None,
+        }),
+    )
 }
 
 // --- error: custom HTTP status + -1 body ---
 
-pub fn err_with_status<T: Serialize>(status: StatusCode, message: &str) -> (StatusCode, Json<ApiResponse<T>>) {
-    (status, Json(ApiResponse {
-        status: -1,
-        data: None,
-        message: Some(message.to_string()),
-    }))
+pub fn err_with_status<T: Serialize>(
+    status: StatusCode,
+    message: &str,
+) -> (StatusCode, Json<ApiResponse<T>>) {
+    (
+        status,
+        Json(ApiResponse {
+            status: -1,
+            data: None,
+            message: Some(message.to_string()),
+        }),
+    )
 }
 
 pub fn bad_request<T: Serialize>(message: &str) -> (StatusCode, Json<ApiResponse<T>>) {

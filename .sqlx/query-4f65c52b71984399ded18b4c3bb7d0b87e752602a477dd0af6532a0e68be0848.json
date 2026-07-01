@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "\n        INSERT INTO external_media (source, external_id, title, type, info, cover_url)\n        VALUES (?, ?, ?, ?, ?, ?)\n        ON DUPLICATE KEY UPDATE\n            title = VALUES(title),\n            type = VALUES(type),\n            info = VALUES(info),\n            cover_url = VALUES(cover_url),\n            updated_at = CURRENT_TIMESTAMP\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "4f65c52b71984399ded18b4c3bb7d0b87e752602a477dd0af6532a0e68be0848"
+}

@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "SELECT id, recorder FROM recordings WHERE user_id = ? AND other_id = ? AND is_delete = 0",
+  "query": "SELECT id, recorder, is_delete FROM recordings WHERE user_id = ? AND external_media_id = ? LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -20,6 +20,15 @@
           "flags": "",
           "max_size": 1020
         }
+      },
+      {
+        "ordinal": 2,
+        "name": "is_delete",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL",
+          "max_size": 4
+        }
       }
     ],
     "parameters": {
@@ -27,8 +36,9 @@
     },
     "nullable": [
       false,
-      true
+      true,
+      false
     ]
   },
-  "hash": "c60fd156a9fb1cbb172a7c723f626a1ecac3ad22f95b3872449639b9f5e4b78f"
+  "hash": "465800996ae8cd99f3e9b91fda9a8fd78f3a7bfa44adf4d1129954eb8d46ed28"
 }

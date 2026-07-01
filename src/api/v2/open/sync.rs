@@ -1,15 +1,15 @@
 use axum::{
+    Json,
     extract::{Query, State},
     http::StatusCode,
-    Json,
 };
+use chrono::NaiveDateTime;
 use serde::Serialize;
 use sqlx::mysql::MySqlPool;
-use chrono::NaiveDateTime;
 
-use crate::api::open::api_token::{require_token_with_perm, PERM_READ, PERM_WRITE};
+use crate::api::open::api_token::{PERM_READ, PERM_WRITE, require_token_with_perm};
+use crate::api::v2::response::{ApiResponse, unauthorized};
 use crate::api::v2::sync::{SyncRequestBody, SyncResponseData, SyncResponseRecord};
-use crate::api::v2::response::{unauthorized, ApiResponse};
 
 #[derive(serde::Deserialize)]
 pub struct OpenSyncQuery {
@@ -23,19 +23,25 @@ pub struct OpenSyncSinceQuery {
 }
 
 fn forbidden<T: Serialize>(msg: &str) -> (StatusCode, Json<ApiResponse<T>>) {
-    (StatusCode::FORBIDDEN, Json(ApiResponse {
-        status: -1,
-        data: None,
-        message: Some(msg.to_string()),
-    }))
+    (
+        StatusCode::FORBIDDEN,
+        Json(ApiResponse {
+            status: -1,
+            data: None,
+            message: Some(msg.to_string()),
+        }),
+    )
 }
 
 fn bad_request<T: Serialize>(msg: &str) -> (StatusCode, Json<ApiResponse<T>>) {
-    (StatusCode::BAD_REQUEST, Json(ApiResponse {
-        status: -1,
-        data: None,
-        message: Some(msg.to_string()),
-    }))
+    (
+        StatusCode::BAD_REQUEST,
+        Json(ApiResponse {
+            status: -1,
+            data: None,
+            message: Some(msg.to_string()),
+        }),
+    )
 }
 
 pub async fn sync_records(
@@ -48,11 +54,12 @@ pub async fn sync_records(
         None => return unauthorized("Missing API token"),
     };
 
-    let token_info = match require_token_with_perm(&pool, Some(token), &[PERM_READ, PERM_WRITE]).await {
-        Ok(info) => info,
-        Err(StatusCode::UNAUTHORIZED) => return unauthorized("Invalid API token"),
-        Err(_) => return forbidden("Insufficient permissions"),
-    };
+    let token_info =
+        match require_token_with_perm(&pool, Some(token), &[PERM_READ, PERM_WRITE]).await {
+            Ok(info) => info,
+            Err(StatusCode::UNAUTHORIZED) => return unauthorized("Invalid API token"),
+            Err(_) => return forbidden("Insufficient permissions"),
+        };
 
     crate::api::v2::sync::do_sync_records(&pool, token_info.user_id, body).await
 }

@@ -59,6 +59,7 @@ export interface ConfigData {
 }
 
 export interface BangumiSearchItem {
+  source?: 'bangumi'
   bangumi_id: string
   title: string
   alias: string
@@ -67,8 +68,33 @@ export interface BangumiSearchItem {
   type: number
 }
 
+export interface ImdbSearchItem {
+  source: 'imdb'
+  imdb_id: string
+  external_id: string
+  title: string
+  year: string | null
+  cover: string | null
+  info: string
+  type: number
+}
+
 export interface BangumiItem {
+  source?: 'bangumi'
   bangumi_id: string
+  title: string
+  cover_url: string
+  type: number
+  author: string
+  release_date: string | null
+  episodes: number
+  description: string
+}
+
+export interface ImdbItem {
+  source: 'imdb'
+  imdb_id: string
+  external_id: string
   title: string
   cover_url: string
   type: number
@@ -80,10 +106,14 @@ export interface BangumiItem {
 
 export interface DetailListItem {
   id: number
+  source: string | null
+  external_id: string | null
+  local_external_media_id: number | null
   local_bangumi_id: number | null
   other_id: number | null
   local_other_id: number | null
   bangumi_id: string | null
+  imdb_id: string | null
   title: string | null
   type: number | null
   author: string | null
@@ -98,8 +128,12 @@ export interface DetailListItem {
 
 export interface RecorderItem {
   id: number
+  source: string | null
+  external_id: string | null
+  local_external_media_id: number | null
   local_bangumi_id: number | null
   bangumi_id: string | null
+  imdb_id: string | null
   recorder: string | null
   user_status: number | null
   is_delete: boolean
@@ -149,6 +183,10 @@ export interface SyncResponseData {
 }
 
 export interface AddRecordData {
+  source?: string
+  external_id?: string
+  imdb_id?: string
+  local_external_media_id?: number
   local_bangumi_id?: number
   other_id?: number
   local_other_id?: number
@@ -158,6 +196,10 @@ export interface AddRecordData {
 }
 
 export interface GetRecordData {
+  source?: string
+  external_id?: string
+  imdb_id?: string
+  local_external_media_id?: number
   local_bangumi_id?: number
   other_id?: number
   local_other_id?: number
@@ -170,6 +212,10 @@ export interface GetRecordData {
 
 export interface AddRecordParams {
   bangumi_id?: number
+  source?: 'bangumi' | 'imdb' | 'custom'
+  external_id?: string
+  imdb_id?: string
+  use_api?: boolean
   other_id?: number
   other_title?: string
   other_description?: string
@@ -196,7 +242,9 @@ export interface UserInfo {
 }
 
 export interface LocalSearchItem {
+  source: 'bangumi' | 'imdb' | 'custom'
   bangumi_id: string | null
+  imdb_id: string | null
   other_id: number | null
   title: string
   cover: string | null
@@ -273,6 +321,21 @@ export const api = {
     return request<ApiResponse<BangumiItem>>(`/api/v2/bangumi/${id}${params}`)
   },
 
+  searchImdb(title: string, page?: number, useApi?: boolean) {
+    const params = new URLSearchParams({ q: title })
+    if (page) params.set('page', String(page))
+    if (useApi !== undefined) params.set('use_api', String(useApi))
+    return request<ApiResponse<ImdbSearchItem[]>>(`/api/v2/imdb/search?${params}`)
+  },
+
+  searchImdbById(id: string, force?: boolean, useApi?: boolean) {
+    const params = new URLSearchParams()
+    if (force) params.set('force', 'true')
+    if (useApi !== undefined) params.set('use_api', String(useApi))
+    const query = params.toString()
+    return request<ApiResponse<ImdbItem>>(`/api/v2/imdb/${encodeURIComponent(id)}${query ? `?${query}` : ''}`)
+  },
+
   searchLocal(keyword?: string, id?: number, page?: number, pageSize?: number) {
     const params = new URLSearchParams()
     if (keyword) params.set('q', keyword)
@@ -302,6 +365,10 @@ export const api = {
     return request<ApiResponse<GetRecordData>>(`/api/v2/records/custom/${id}`)
   },
 
+  getRecordByImdb(id: string) {
+    return request<ApiResponse<GetRecordData>>(`/api/v2/records/imdb/${encodeURIComponent(id)}`)
+  },
+
   updateRecord(bangumi_id: number, recorder?: string, user_status?: number) {
     return request<ApiResponse<null>>(`/api/v2/records/bangumi/${bangumi_id}`, {
       method: 'PATCH',
@@ -309,14 +376,30 @@ export const api = {
     })
   },
 
-  deleteRecordByBangumi(id: number) {
-    return request<ApiResponse<null>>(`/api/v2/records/bangumi/${id}`, {
+  updateRecordByImdb(imdbId: string, recorder?: string, user_status?: number) {
+    return request<ApiResponse<null>>(`/api/v2/records/imdb/${encodeURIComponent(imdbId)}`, {
+      method: 'PATCH',
+      body: { recorder, user_status },
+    })
+  },
+
+  deleteRecordByBangumi(id: number, hardDelete = false) {
+    const query = hardDelete ? '?hard_delete=true' : ''
+    return request<ApiResponse<null>>(`/api/v2/records/bangumi/${id}${query}`, {
       method: 'DELETE',
     })
   },
 
-  deleteRecordByCustom(id: number) {
-    return request<ApiResponse<null>>(`/api/v2/records/custom/${id}`, {
+  deleteRecordByImdb(id: string, hardDelete = false) {
+    const query = hardDelete ? '?hard_delete=true' : ''
+    return request<ApiResponse<null>>(`/api/v2/records/imdb/${encodeURIComponent(id)}${query}`, {
+      method: 'DELETE',
+    })
+  },
+
+  deleteRecordByCustom(id: number, hardDelete = false) {
+    const query = hardDelete ? '?hard_delete=true' : ''
+    return request<ApiResponse<null>>(`/api/v2/records/custom/${id}${query}`, {
       method: 'DELETE',
     })
   },

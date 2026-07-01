@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "DELETE FROM recordings WHERE user_id = ? AND external_media_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "05495483dcee3f4d7d153cf148e7c98228e09578e6d5efb2e6b8a99b59cbec3c"
+}

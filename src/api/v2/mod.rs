@@ -1,9 +1,9 @@
+pub mod auth;
+pub mod episodes;
+pub mod open;
+pub mod record;
 pub mod response;
 pub mod search;
-pub mod record;
-pub mod user;
-pub mod auth;
-pub mod open;
-pub mod token;
-pub mod episodes;
 pub mod sync;
+pub mod token;
+pub mod user;

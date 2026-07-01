@@ -34,6 +34,8 @@ const typeLabels: Record<number, string> = {
   6: 'Music',
   7: '书籍',
   8: '其他',
+  9: '游戏',
+  10: '三次元',
 }
 
 const statusLabels: Record<number, string> = {
@@ -67,7 +69,11 @@ function getCoverUrl(item: DetailListItem) {
 }
 
 function isBangumi(item: DetailListItem) {
-  return !!item.bangumi_id
+  return item.source === 'bangumi' || !!item.bangumi_id
+}
+
+function isImdb(item: DetailListItem) {
+  return item.source === 'imdb' || !!item.imdb_id
 }
 
 async function fetchRecords() {
@@ -92,17 +98,44 @@ function goDetail(bangumiId: string) {
 
 const deleting = ref<Record<string, boolean>>({})
 
-async function handleDelete(item: DetailListItem) {
+async function handleDelete(item: DetailListItem, hardDelete = false) {
   if (isBangumi(item)) {
     if (!item.bangumi_id) return
     Modal.warning({
-      title: '确认删除',
-      content: `确定要删除「${item.title || '未知标题'}」的追番记录吗？`,
+      title: hardDelete ? '确认硬删除' : '确认软删除',
+      content: hardDelete
+        ? `确定要永久删除「${item.title || '未知标题'}」的追踪记录吗？此操作不可恢复。`
+        : `确定要软删除「${item.title || '未知标题'}」的追踪记录吗？之后重新添加可恢复。`,
       hideCancel: false,
       async onOk() {
         deleting.value[String(item.id)] = true
         try {
-          const res = await api.deleteRecordByBangumi(parseInt(item.bangumi_id!))
+          const res = await api.deleteRecordByBangumi(parseInt(item.bangumi_id!), hardDelete)
+          if (res.status === 0) {
+            Message.success('删除成功')
+            records.value = records.value.filter(r => r.id !== item.id)
+          } else {
+            Message.error(res.message || '删除失败')
+          }
+        } catch {
+          Message.error('网络请求失败')
+        } finally {
+          deleting.value[String(item.id)] = false
+        }
+      },
+    })
+  } else if (isImdb(item)) {
+    if (!item.imdb_id) return
+    Modal.warning({
+      title: hardDelete ? '确认硬删除' : '确认软删除',
+      content: hardDelete
+        ? `确定要永久删除「${item.title || '未知标题'}」的 IMDb 追踪记录吗？此操作不可恢复。`
+        : `确定要软删除「${item.title || '未知标题'}」的 IMDb 追踪记录吗？之后重新添加可恢复。`,
+      hideCancel: false,
+      async onOk() {
+        deleting.value[String(item.id)] = true
+        try {
+          const res = await api.deleteRecordByImdb(item.imdb_id!, hardDelete)
           if (res.status === 0) {
             Message.success('删除成功')
             records.value = records.value.filter(r => r.id !== item.id)
@@ -117,15 +150,17 @@ async function handleDelete(item: DetailListItem) {
       },
     })
   } else {
-    if (!item.local_other_id) return
+    if (!item.other_id) return
     Modal.warning({
-      title: '确认删除',
-      content: `确定要删除「${item.title || '未知标题'}」的自定义条目吗？`,
+      title: hardDelete ? '确认硬删除' : '确认软删除',
+      content: hardDelete
+        ? `确定要永久删除「${item.title || '未知标题'}」的自定义条目记录吗？此操作不可恢复。`
+        : `确定要软删除「${item.title || '未知标题'}」的自定义条目记录吗？之后重新添加可恢复。`,
       hideCancel: false,
       async onOk() {
         deleting.value[String(item.id)] = true
         try {
-          const res = await api.deleteRecordById(item.local_other_id!)
+          const res = await api.deleteRecordByCustom(item.other_id!, hardDelete)
           if (res.status === 0) {
             Message.success('删除成功')
             records.value = records.value.filter(r => r.id !== item.id)
@@ -148,8 +183,8 @@ onMounted(fetchRecords)
 <template>
   <div>
     <div style="margin-bottom: 24px">
-      <h2 style="font-size: 20px; color: #1d2129; margin: 0">我的追番</h2>
-      <p style="color: #86909c; font-size: 14px; margin-top: 4px">共 {{ filteredRecords.length }} 部</p>
+      <h2 style="font-size: 20px; color: #1d2129; margin: 0">我的追踪</h2>
+      <p style="color: #86909c; font-size: 14px; margin-top: 4px">共 {{ filteredRecords.length }} 个条目</p>
     </div>
 
     <div style="margin-bottom: 20px">
@@ -203,12 +238,16 @@ onMounted(fetchRecords)
                 <span style="font-weight: 600; font-size: 14px; color: #1d2129; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
                   {{ item.title || '未知标题' }}
                 </span>
-                <a-tag v-if="!isBangumi(item)" color="purple" size="small">自定义</a-tag>
+                <a-tag v-if="isImdb(item)" color="orangered" size="small">IMDb</a-tag>
+                <a-tag v-else-if="!isBangumi(item)" color="purple" size="small">自定义</a-tag>
               </div>
               <div style="font-size: 12px; color: #86909c; margin-bottom: 8px">
                 <a-tag :color="getStatusColor(item.user_status)" size="small" style="margin-right: 4px">{{ getStatusLabel(item.user_status) }}</a-tag>
                 <template v-if="isBangumi(item)">
                   {{ getTypeLabel(item.type) }} · {{ item.episodes ? item.episodes + '话' : '' }}
+                </template>
+                <template v-else-if="isImdb(item)">
+                  IMDb · {{ getTypeLabel(item.type) }}
                 </template>
                 <template v-else>
                   {{ item.episodes ? item.episodes + '项' : '' }}
@@ -227,9 +266,18 @@ onMounted(fetchRecords)
                 status="danger"
                 size="small"
                 :loading="deleting[String(item.id)]"
-                @click.stop="handleDelete(item)"
+                @click.stop="handleDelete(item, false)"
               >
                 <template #icon><icon-delete /></template>
+              </a-button>
+              <a-button
+                type="text"
+                status="danger"
+                size="small"
+                :loading="deleting[String(item.id)]"
+                @click.stop="handleDelete(item, true)"
+              >
+                硬删
               </a-button>
             </div>
           </div>

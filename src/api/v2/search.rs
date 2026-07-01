@@ -1,21 +1,23 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
+use chrono::{Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
-use chrono::{Duration, Utc, NaiveDate};
 
+use super::episodes::ensure_episode_metadata_cached;
+use super::response::{ApiResponse, bad_request, internal_error, not_found, success};
+use crate::api::imdb::{
+    ImdbIDSearchQuery, ImdbItem, ImdbSearchItem, ImdbSearchQuery, search_imdb as v1_search_imdb,
+    search_imdb_by_id as v1_search_imdb_by_id,
+};
 use crate::api::search::{
-    TitleSearchQuery, IDSearchQuery,
-    BangumiSearchItem, LocalSearchItem,
-    search_bangumi_by_title as v1_search_title,
-    search_bangumi_by_id as v1_search_by_id,
+    BangumiSearchItem, IDSearchQuery, LocalSearchItem, TitleSearchQuery,
+    search_bangumi_by_id as v1_search_by_id, search_bangumi_by_title as v1_search_title,
     search_local as v1_search_local,
 };
-use super::response::{success, not_found, internal_error, bad_request, ApiResponse};
-use super::episodes::ensure_episode_metadata_cached;
 
 #[derive(Deserialize)]
 pub struct EpisodesForceQuery {
@@ -33,6 +35,19 @@ pub struct SearchQuery {
 #[derive(Deserialize)]
 pub struct BangumiQuery {
     pub force: Option<bool>,
+}
+
+#[derive(Deserialize)]
+pub struct ImdbQuery {
+    pub force: Option<bool>,
+    pub use_api: Option<bool>,
+}
+
+#[derive(Deserialize)]
+pub struct ImdbSearchParams {
+    pub q: Option<String>,
+    pub page: Option<i32>,
+    pub use_api: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -95,8 +110,8 @@ pub async fn get_bangumi(
     let force = query.force.unwrap_or(false);
     let id_str = id.to_string();
 
-    if !force {
-        if let Ok(Some(row)) = sqlx::query!(
+    if !force
+        && let Ok(Some(row)) = sqlx::query!(
             r#"
             SELECT b.external_id, b.title, b.cover_url, b.type              AS "type?: i8",
                    d.author, d.release_date, d.episodes, d.description,
@@ -109,29 +124,23 @@ pub async fn get_bangumi(
         )
         .fetch_optional(&pool)
         .await
-        {
-            if let Some(ts) = row.updated_at {
-                if Utc::now().naive_utc() <= ts + Duration::hours(24) {
-                    return success(BangumiItem {
-                        bangumi_id: row.external_id,
-                        title: row.title,
-                        cover_url: row.cover_url.unwrap_or_default(),
-                        r#type: row.r#type.unwrap_or(8),
-                        author: row.author.unwrap_or_default(),
-                        release_date: row.release_date,
-                        episodes: row.episodes.unwrap_or(0),
-                        description: row.description.unwrap_or_default(),
-                    });
-                }
-            }
-        }
+        && let Some(ts) = row.updated_at
+        && Utc::now().naive_utc() <= ts + Duration::hours(24)
+    {
+        return success(BangumiItem {
+            source: "bangumi".to_string(),
+            bangumi_id: row.external_id,
+            title: row.title,
+            cover_url: row.cover_url.unwrap_or_default(),
+            r#type: row.r#type.unwrap_or(8),
+            author: row.author.unwrap_or_default(),
+            release_date: row.release_date,
+            episodes: row.episodes.unwrap_or(0),
+            description: row.description.unwrap_or_default(),
+        });
     }
 
-    let v1_resp = v1_search_by_id(
-        State(pool.clone()),
-        Json(IDSearchQuery { id: Some(id) }),
-    )
-    .await;
+    let v1_resp = v1_search_by_id(State(pool.clone()), Json(IDSearchQuery { id: Some(id) })).await;
 
     let inner = v1_resp.0;
     match inner.status {
@@ -140,6 +149,61 @@ pub async fn get_bangumi(
             None => not_found("Bangumi not found"),
         },
         _ => internal_error("Search failed"),
+    }
+}
+
+/// GET /api/v2/imdb/search?q=keyword&page=1&use_api=false
+pub async fn search_imdb(
+    State(pool): State<MySqlPool>,
+    Query(params): Query<ImdbSearchParams>,
+) -> (StatusCode, Json<ApiResponse<Vec<ImdbSearchItem>>>) {
+    let title = match &params.q {
+        Some(t) if !t.trim().is_empty() => t.trim().to_string(),
+        _ => return bad_request("Missing search query"),
+    };
+
+    let v1_resp = v1_search_imdb(
+        State(pool.clone()),
+        Json(ImdbSearchQuery {
+            q: Some(title),
+            page: params.page,
+            use_api: params.use_api,
+        }),
+    )
+    .await;
+
+    let inner = v1_resp.0;
+    if inner.status == 0 {
+        success(inner.data.unwrap_or_default())
+    } else {
+        internal_error("IMDb search failed")
+    }
+}
+
+/// GET /api/v2/imdb/:id?force=true&use_api=false
+pub async fn get_imdb(
+    State(pool): State<MySqlPool>,
+    Path(id): Path<String>,
+    Query(query): Query<ImdbQuery>,
+) -> (StatusCode, Json<ApiResponse<ImdbItem>>) {
+    let v1_resp = v1_search_imdb_by_id(
+        State(pool.clone()),
+        Json(ImdbIDSearchQuery {
+            id: Some(id),
+            force: query.force,
+            use_api: query.use_api,
+        }),
+    )
+    .await;
+
+    let inner = v1_resp.0;
+    match inner.status {
+        0 => match inner.data {
+            Some(item) => success(item),
+            None => not_found("IMDb title not found"),
+        },
+        -1 => bad_request("Invalid IMDb id"),
+        _ => internal_error("IMDb detail lookup failed"),
     }
 }
 

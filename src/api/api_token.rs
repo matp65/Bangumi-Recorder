@@ -1,8 +1,8 @@
 use axum::http::StatusCode;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use sqlx::mysql::MySqlPool;
 use sqlx::Row;
+use sqlx::mysql::MySqlPool;
 
 // Permission bit definitions
 pub const PERM_READ: u64 = 1 << 0;
@@ -17,18 +17,48 @@ pub const PERM_ALL: u64 = u64::MAX;
 
 // Combined value of all individual permissions (without PERM_ALL).
 // Used by the frontend to compute "Allow All" without JS 32-bit overflow.
-pub const ALL_COMBINED: u64 = PERM_READ | PERM_WRITE | PERM_VIEW_INFO | PERM_MODIFY_INFO
-    | PERM_ADD_RECORD | PERM_DELETE_RECORD | PERM_MODIFY_RECORD | PERM_CHANGE_STATUS;
+pub const ALL_COMBINED: u64 = PERM_READ
+    | PERM_WRITE
+    | PERM_VIEW_INFO
+    | PERM_MODIFY_INFO
+    | PERM_ADD_RECORD
+    | PERM_DELETE_RECORD
+    | PERM_MODIFY_RECORD
+    | PERM_CHANGE_STATUS;
 
 pub static PERM_LABELS: &[(&str, u64, &str)] = &[
     ("Read-only", PERM_READ, "View record list and details"),
-    ("Read-Write", PERM_WRITE, "Add, modify, delete records and change status"),
-    ("View Personal Info", PERM_VIEW_INFO, "View nickname, avatar, etc."),
-    ("Modify Personal Info", PERM_MODIFY_INFO, "Modify nickname, avatar, etc."),
+    (
+        "Read-Write",
+        PERM_WRITE,
+        "Add, modify, delete records and change status",
+    ),
+    (
+        "View Personal Info",
+        PERM_VIEW_INFO,
+        "View nickname, avatar, etc.",
+    ),
+    (
+        "Modify Personal Info",
+        PERM_MODIFY_INFO,
+        "Modify nickname, avatar, etc.",
+    ),
     ("Add Record", PERM_ADD_RECORD, "Add new tracking records"),
-    ("Delete Record", PERM_DELETE_RECORD, "Delete tracking records"),
-    ("Modify Record", PERM_MODIFY_RECORD, "Modify tracking progress"),
-    ("Change Status", PERM_CHANGE_STATUS, "Change tracking status"),
+    (
+        "Delete Record",
+        PERM_DELETE_RECORD,
+        "Delete tracking records",
+    ),
+    (
+        "Modify Record",
+        PERM_MODIFY_RECORD,
+        "Modify tracking progress",
+    ),
+    (
+        "Change Status",
+        PERM_CHANGE_STATUS,
+        "Change tracking status",
+    ),
 ];
 
 pub fn has_perm(perms: u64, required: &[u64]) -> bool {
@@ -67,14 +97,11 @@ pub struct ApiTokenRow {
     pub updated_at: String,
 }
 
-pub async fn check_api_token(
-    pool: &MySqlPool,
-    token: &str,
-) -> Option<TokenInfo> {
+pub async fn check_api_token(pool: &MySqlPool, token: &str) -> Option<TokenInfo> {
     let token_hash = hash_token(token);
 
     let row = sqlx::query(
-        "SELECT user_id, permissions FROM api_tokens WHERE token_hash = ? AND is_active = 1"
+        "SELECT user_id, permissions FROM api_tokens WHERE token_hash = ? AND is_active = 1",
     )
     .bind(&token_hash)
     .fetch_optional(pool)
@@ -104,7 +131,10 @@ pub async fn check_api_token(
         .execute(pool)
         .await;
 
-    Some(TokenInfo { user_id: user_id as i64, permissions })
+    Some(TokenInfo {
+        user_id: user_id as i64,
+        permissions,
+    })
 }
 
 pub async fn require_api_token(
@@ -112,7 +142,9 @@ pub async fn require_api_token(
     token: Option<&str>,
 ) -> Result<TokenInfo, StatusCode> {
     let token = token.ok_or(StatusCode::UNAUTHORIZED)?;
-    check_api_token(pool, token).await.ok_or(StatusCode::UNAUTHORIZED)
+    check_api_token(pool, token)
+        .await
+        .ok_or(StatusCode::UNAUTHORIZED)
 }
 
 pub async fn require_token_with_perm(

@@ -1,15 +1,15 @@
 use axum::{
+    Json,
     extract::{Extension, Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use serde::Serialize;
 use sqlx::mysql::MySqlPool;
 
-use crate::api::open::api_token::{require_token_with_perm, PERM_READ, PERM_WRITE};
+use crate::api::open::api_token::{PERM_READ, PERM_WRITE, require_token_with_perm};
+use crate::api::v2::episodes::{EpisodeItem, ForceEpisodesQuery, UpdateEpisodeBody};
+use crate::api::v2::response::{ApiResponse, unauthorized};
 use crate::auth_bearer::AuthUser;
-use crate::api::v2::episodes::{EpisodeItem, UpdateEpisodeBody, ForceEpisodesQuery};
-use crate::api::v2::response::{unauthorized, ApiResponse};
 
 #[derive(serde::Deserialize)]
 pub struct OpenTokenQuery {
@@ -18,11 +18,14 @@ pub struct OpenTokenQuery {
 }
 
 fn forbidden<T: Serialize>(msg: &str) -> (StatusCode, Json<ApiResponse<T>>) {
-    (StatusCode::FORBIDDEN, Json(ApiResponse {
-        status: -1,
-        data: None,
-        message: Some(msg.to_string()),
-    }))
+    (
+        StatusCode::FORBIDDEN,
+        Json(ApiResponse {
+            status: -1,
+            data: None,
+            message: Some(msg.to_string()),
+        }),
+    )
 }
 
 pub async fn list_episodes(
@@ -35,15 +38,18 @@ pub async fn list_episodes(
         None => return unauthorized("Missing API token"),
     };
 
-    let token_info = match require_token_with_perm(&pool, Some(token), &[PERM_READ, PERM_WRITE]).await {
-        Ok(info) => info,
-        Err(StatusCode::UNAUTHORIZED) => return unauthorized("Invalid API token"),
-        Err(_) => return forbidden("Insufficient permissions"),
-    };
+    let token_info =
+        match require_token_with_perm(&pool, Some(token), &[PERM_READ, PERM_WRITE]).await {
+            Ok(info) => info,
+            Err(StatusCode::UNAUTHORIZED) => return unauthorized("Invalid API token"),
+            Err(_) => return forbidden("Insufficient permissions"),
+        };
 
     crate::api::v2::episodes::list_episodes(
         State(pool),
-        Extension(AuthUser { user_id: token_info.user_id }),
+        Extension(AuthUser {
+            user_id: token_info.user_id,
+        }),
         Path(bangumi_id),
         Query(ForceEpisodesQuery { force: query.force }),
     )
@@ -69,7 +75,9 @@ pub async fn update_episode(
 
     crate::api::v2::episodes::update_episode(
         State(pool),
-        Extension(AuthUser { user_id: token_info.user_id }),
+        Extension(AuthUser {
+            user_id: token_info.user_id,
+        }),
         Path((bangumi_id, ordinal)),
         Json(body),
     )

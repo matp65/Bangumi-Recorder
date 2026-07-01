@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO external_media_detailed (media_id, author, release_date, episodes, description) VALUES (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "c59efcecb0ba06cefe81eeca78f54a33e231cd04d72440f7a3d78305baa2dc04"
+}

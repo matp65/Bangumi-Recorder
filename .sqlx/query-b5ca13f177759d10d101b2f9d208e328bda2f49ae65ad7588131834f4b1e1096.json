@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT \n            r.id,\n            r.bangumi_id AS local_bangumi_id,\n            r.other_id,\n            o.name AS title,\n            o.cover_url,\n            o.max_number AS episodes,\n            r.recorder,\n            r.status,\n            r.is_delete,\n            r.updated_at,\n            r.created_at\n        FROM recordings r\n        LEFT JOIN other_recorders o ON r.other_id = o.id\n        WHERE r.user_id = ? AND r.other_id IS NOT NULL\n        ",
+  "query": "\n        SELECT \n            r.id,\n            r.bangumi_id AS local_bangumi_id,\n            r.external_media_id AS local_external_media_id,\n            r.other_id,\n            o.name AS title,\n            o.cover_url,\n            o.max_number AS episodes,\n            r.recorder,\n            r.status,\n            r.is_delete,\n            r.updated_at,\n            r.created_at\n        FROM recordings r\n        LEFT JOIN other_recorders o ON r.other_id = o.id\n        WHERE r.user_id = ? AND r.other_id IS NOT NULL\n        ",
   "describe": {
     "columns": [
       {
@@ -23,7 +23,7 @@
       },
       {
         "ordinal": 2,
-        "name": "other_id",
+        "name": "local_external_media_id",
         "type_info": {
           "type": "Long",
           "flags": "MULTIPLE_KEY | UNSIGNED",
@@ -32,6 +32,15 @@
       },
       {
         "ordinal": 3,
+        "name": "other_id",
+        "type_info": {
+          "type": "Long",
+          "flags": "MULTIPLE_KEY | UNSIGNED",
+          "max_size": 10
+        }
+      },
+      {
+        "ordinal": 4,
         "name": "title",
         "type_info": {
           "type": "VarString",
@@ -40,7 +49,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "cover_url",
         "type_info": {
           "type": "VarString",
@@ -49,7 +58,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "episodes",
         "type_info": {
           "type": "Long",
@@ -58,7 +67,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "recorder",
         "type_info": {
           "type": "VarString",
@@ -67,7 +76,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "status",
         "type_info": {
           "type": "Tiny",
@@ -76,7 +85,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "is_delete",
         "type_info": {
           "type": "Tiny",
@@ -85,7 +94,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "updated_at",
         "type_info": {
           "type": "Datetime",
@@ -94,7 +103,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "created_at",
         "type_info": {
           "type": "Datetime",
@@ -114,11 +123,12 @@
       true,
       true,
       true,
+      true,
       false,
       false,
       false,
       false
     ]
   },
-  "hash": "74d8f61f785cfdeae39f1432769bbd4ccd03a5dbb408236e2a80ed25ea965e33"
+  "hash": "b5ca13f177759d10d101b2f9d208e328bda2f49ae65ad7588131834f4b1e1096"
 }

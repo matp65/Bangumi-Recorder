@@ -1,0 +1,24 @@
+{
+  "db_name": "MySQL",
+  "query": "\n                    SELECT d.updated_at\n                    FROM external_media m\n                    JOIN external_media_detailed d ON d.media_id = m.id\n                    WHERE m.source = ? AND m.external_id = ?\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "updated_at",
+        "type_info": {
+          "type": "Datetime",
+          "flags": "NOT_NULL | BINARY | ON_UPDATE_NOW",
+          "max_size": 19
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d0b6245eb5e992ce8696913a8f3438b1597092634fa140faa68cf02fabbadb0a"
+}

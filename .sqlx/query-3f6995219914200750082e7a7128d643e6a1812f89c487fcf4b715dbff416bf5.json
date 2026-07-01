@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "SELECT id, bangumi_id, other_id, recorder, status, is_delete, updated_at FROM recordings WHERE user_id = ? AND other_id = ? AND is_delete = 0",
+  "query": "\n        SELECT \n            r.id,\n            r.bangumi_id AS local_bangumi_id,\n            r.external_media_id AS local_external_media_id,\n            r.other_id,\n            r.recorder,\n            r.status,\n            r.is_delete,\n            r.updated_at\n        FROM recordings r\n        WHERE r.user_id = ? AND r.other_id IS NOT NULL\n        ",
   "describe": {
     "columns": [
       {
@@ -14,7 +14,7 @@
       },
       {
         "ordinal": 1,
-        "name": "bangumi_id",
+        "name": "local_bangumi_id",
         "type_info": {
           "type": "Long",
           "flags": "MULTIPLE_KEY | UNSIGNED",
@@ -23,7 +23,7 @@
       },
       {
         "ordinal": 2,
-        "name": "other_id",
+        "name": "local_external_media_id",
         "type_info": {
           "type": "Long",
           "flags": "MULTIPLE_KEY | UNSIGNED",
@@ -32,6 +32,15 @@
       },
       {
         "ordinal": 3,
+        "name": "other_id",
+        "type_info": {
+          "type": "Long",
+          "flags": "MULTIPLE_KEY | UNSIGNED",
+          "max_size": 10
+        }
+      },
+      {
+        "ordinal": 4,
         "name": "recorder",
         "type_info": {
           "type": "VarString",
@@ -40,7 +49,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "status",
         "type_info": {
           "type": "Tiny",
@@ -49,7 +58,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "is_delete",
         "type_info": {
           "type": "Tiny",
@@ -58,7 +67,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "updated_at",
         "type_info": {
           "type": "Datetime",
@@ -68,10 +77,11 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       false,
+      true,
       true,
       true,
       true,
@@ -80,5 +90,5 @@
       false
     ]
   },
-  "hash": "d7b973e012cc4d4f509607936fea6a2af54d167274bef5e34fb3e1275969f717"
+  "hash": "3f6995219914200750082e7a7128d643e6a1812f89c487fcf4b715dbff416bf5"
 }

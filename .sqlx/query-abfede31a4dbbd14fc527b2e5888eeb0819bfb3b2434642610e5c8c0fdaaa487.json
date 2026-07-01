@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n            SELECT \n                r.id,\n                r.bangumi_id AS local_bangumi_id,\n                b.external_id AS bangumi_id,\n                b.title,\n                b.type,\n                d.author,\n                d.release_date,\n                d.episodes,\n                d.description,\n                b.cover_url,\n                r.recorder,\n                r.status,\n                r.updated_at,\n                r.created_at\n            FROM recordings r\n            LEFT JOIN bangumi_info_easy b\n                ON r.bangumi_id = b.id\n            LEFT JOIN bangumi_info_detailed d\n                ON d.bangumi_id = b.id\n            WHERE b.id = ?\n            ",
+  "query": "\n        SELECT \n            r.id,\n            r.external_media_id AS local_external_media_id,\n            e.source,\n            e.external_id,\n            e.title,\n            e.type,\n            d.author,\n            d.episodes,\n            e.cover_url,\n            r.recorder,\n            r.status,\n            r.is_delete,\n            r.updated_at,\n            r.created_at\n        FROM recordings r\n        LEFT JOIN external_media e ON r.external_media_id = e.id\n        LEFT JOIN external_media_detailed d ON d.media_id = e.id\n        WHERE r.user_id = ? AND r.external_media_id IS NOT NULL\n        ",
   "describe": {
     "columns": [
       {
@@ -14,7 +14,7 @@
       },
       {
         "ordinal": 1,
-        "name": "local_bangumi_id",
+        "name": "local_external_media_id",
         "type_info": {
           "type": "Long",
           "flags": "MULTIPLE_KEY | UNSIGNED",
@@ -23,24 +23,33 @@
       },
       {
         "ordinal": 2,
-        "name": "bangumi_id",
+        "name": "source",
         "type_info": {
           "type": "VarString",
-          "flags": "UNIQUE_KEY | NO_DEFAULT_VALUE",
-          "max_size": 200
+          "flags": "MULTIPLE_KEY | NO_DEFAULT_VALUE",
+          "max_size": 80
         }
       },
       {
         "ordinal": 3,
-        "name": "title",
+        "name": "external_id",
         "type_info": {
           "type": "VarString",
           "flags": "NO_DEFAULT_VALUE",
-          "max_size": 1020
+          "max_size": 200
         }
       },
       {
         "ordinal": 4,
+        "name": "title",
+        "type_info": {
+          "type": "VarString",
+          "flags": "MULTIPLE_KEY | NO_DEFAULT_VALUE",
+          "max_size": 1020
+        }
+      },
+      {
+        "ordinal": 5,
         "name": "type",
         "type_info": {
           "type": "Tiny",
@@ -49,21 +58,12 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "author",
         "type_info": {
           "type": "VarString",
           "flags": "",
           "max_size": 1020
-        }
-      },
-      {
-        "ordinal": 6,
-        "name": "release_date",
-        "type_info": {
-          "type": "Date",
-          "flags": "BINARY",
-          "max_size": 10
         }
       },
       {
@@ -77,7 +77,7 @@
       },
       {
         "ordinal": 8,
-        "name": "description",
+        "name": "cover_url",
         "type_info": {
           "type": "Blob",
           "flags": "BLOB",
@@ -86,15 +86,6 @@
       },
       {
         "ordinal": 9,
-        "name": "cover_url",
-        "type_info": {
-          "type": "VarString",
-          "flags": "",
-          "max_size": 1020
-        }
-      },
-      {
-        "ordinal": 10,
         "name": "recorder",
         "type_info": {
           "type": "VarString",
@@ -103,8 +94,17 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 10,
         "name": "status",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL",
+          "max_size": 4
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "is_delete",
         "type_info": {
           "type": "Tiny",
           "flags": "NOT_NULL",
@@ -144,11 +144,11 @@
       true,
       true,
       true,
-      true,
+      false,
       false,
       false,
       false
     ]
   },
-  "hash": "3296e5bc4fca1b9d13981df608a681be1d5ba78b6922777dd46423c6dc87ae06"
+  "hash": "abfede31a4dbbd14fc527b2e5888eeb0819bfb3b2434642610e5c8c0fdaaa487"
 }

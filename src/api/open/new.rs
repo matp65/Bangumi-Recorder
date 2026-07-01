@@ -6,7 +6,7 @@ use axum::{
 use serde::Deserialize;
 use sqlx::mysql::MySqlPool;
 
-use super::api_token::{require_token_with_perm, PERM_ADD_RECORD, PERM_WRITE};
+use super::api_token::{PERM_ADD_RECORD, PERM_WRITE, require_token_with_perm};
 use crate::auth_bearer::AuthUser;
 
 pub use crate::api::new::AddRecordResponse;
@@ -14,6 +14,10 @@ pub use crate::api::new::AddRecordResponse;
 #[derive(Debug, Deserialize)]
 pub struct AddRecordQuery {
     pub bangumi_id: Option<u32>,
+    pub source: Option<String>,
+    pub external_id: Option<String>,
+    pub imdb_id: Option<String>,
+    pub use_api: Option<bool>,
     pub other_id: Option<u32>,
     pub other_title: Option<String>,
     pub other_description: Option<String>,
@@ -29,7 +33,12 @@ pub async fn add_record_open(
     State(pool): State<MySqlPool>,
     Query(params): Query<AddRecordQuery>,
 ) -> Result<Json<AddRecordResponse>, StatusCode> {
-    let token_info = require_token_with_perm(&pool, params.token.as_deref(), &[PERM_ADD_RECORD, PERM_WRITE]).await?;
+    let token_info = require_token_with_perm(
+        &pool,
+        params.token.as_deref(),
+        &[PERM_ADD_RECORD, PERM_WRITE],
+    )
+    .await?;
     let user_id = token_info.user_id;
 
     Ok(crate::api::new::add_record(
@@ -37,6 +46,10 @@ pub async fn add_record_open(
         axum::extract::Extension(AuthUser { user_id }),
         axum::Json(crate::api::new::AddRecordQuery {
             bangumi_id: params.bangumi_id,
+            source: params.source,
+            external_id: params.external_id,
+            imdb_id: params.imdb_id,
+            use_api: params.use_api,
             other_id: params.other_id,
             other_title: params.other_title,
             other_description: params.other_description,

@@ -1,17 +1,17 @@
 use std::collections::{HashMap, HashSet};
 
 use axum::{
+    Json,
     extract::{Extension, Query, State},
     http::StatusCode,
-    Json,
 };
-use serde::{Deserialize, Serialize};
-use sqlx::mysql::MySqlPool;
-use sqlx::QueryBuilder;
 use chrono::NaiveDateTime;
+use serde::{Deserialize, Serialize};
+use sqlx::QueryBuilder;
+use sqlx::mysql::MySqlPool;
 
+use super::response::{ApiResponse, bad_request, internal_error, success};
 use crate::auth_bearer::AuthUser;
-use super::response::{success, bad_request, internal_error, ApiResponse};
 
 #[derive(Deserialize)]
 pub struct SyncRequestRecord {
@@ -54,7 +54,9 @@ async fn do_sync(
     if body.records.len() > MAX_SYNC_RECORDS {
         log::warn!(
             "User {} attempted to sync {} records (limit: {})",
-            user_id, body.records.len(), MAX_SYNC_RECORDS
+            user_id,
+            body.records.len(),
+            MAX_SYNC_RECORDS
         );
         return Err(());
     }
@@ -64,8 +66,7 @@ async fn do_sync(
         client_bangumi_ids.insert(rec.bangumi_id.clone());
     }
 
-    let mut external_to_easy: HashMap<String, u32> =
-        HashMap::with_capacity(body.records.len());
+    let mut external_to_easy: HashMap<String, u32> = HashMap::with_capacity(body.records.len());
     if !body.records.is_empty() {
         let mut qb = QueryBuilder::new(
             "SELECT id, external_id FROM bangumi_info_easy WHERE external_id IN (",
@@ -100,8 +101,9 @@ async fn do_sync(
             None => continue,
         };
         let status = client_rec.user_status.map(|s| s as i8).unwrap_or(0);
-        let client_ts =
-            client_rec.updated_at.unwrap_or_else(|| chrono::Utc::now().naive_utc());
+        let client_ts = client_rec
+            .updated_at
+            .unwrap_or_else(|| chrono::Utc::now().naive_utc());
         to_write.push(PendingWrite {
             easy_id,
             recorder: client_rec.recorder.clone(),
@@ -121,11 +123,11 @@ async fn do_sync(
         );
         qb.push_values(to_write.iter(), |mut b, item| {
             b.push_bind(user_id)
-             .push_bind(item.easy_id)
-             .push_bind(&item.recorder)
-             .push_bind(item.status)
-             .push_bind(item.updated_at)
-             .push_bind(item.updated_at);
+                .push_bind(item.easy_id)
+                .push_bind(&item.recorder)
+                .push_bind(item.status)
+                .push_bind(item.updated_at)
+                .push_bind(item.updated_at);
         });
         qb.push(
             " ON DUPLICATE KEY UPDATE \

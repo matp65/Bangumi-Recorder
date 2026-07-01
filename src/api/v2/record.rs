@@ -1,41 +1,51 @@
 use axum::{
-    extract::{Extension, Path, State},
-    http::StatusCode,
     Json,
+    extract::{Extension, Path, Query, State},
+    http::StatusCode,
 };
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
-use chrono::NaiveDateTime;
 
-use crate::auth_bearer::AuthUser;
-use crate::api::new::AddRecordQuery;
-use crate::api::update_recorder::UpdateRecorderQuery;
+use super::response::{
+    ApiResponse, bad_request, conflict, internal_error, not_found, success, success_empty,
+};
 use crate::api::delete_recorder::DeleteRecorderQuery;
-use crate::api::get_recorder::GetRecorderQuery;
-use crate::api::list::{RecorderItem, list_recorder as v1_list_recorder};
-use crate::api::detail_list::{DetailListItem, get_detail_list as v1_get_detail_list};
-use crate::api::new::add_record as v1_add_record;
-use crate::api::update_recorder::update_user_recorder as v1_update_recorder;
 use crate::api::delete_recorder::delete_recorder as v1_delete_recorder;
+use crate::api::detail_list::{DetailListItem, get_detail_list as v1_get_detail_list};
+use crate::api::get_recorder::GetRecorderQuery;
 use crate::api::get_recorder::get_recorder as v1_get_recorder;
-use super::response::{success, success_empty, bad_request, not_found, conflict, internal_error, ApiResponse};
+use crate::api::list::{RecorderItem, list_recorder as v1_list_recorder};
+use crate::api::new::AddRecordQuery;
+use crate::api::new::add_record as v1_add_record;
+use crate::api::update_recorder::UpdateRecorderQuery;
+use crate::api::update_recorder::update_user_recorder as v1_update_recorder;
+use crate::auth_bearer::AuthUser;
 
 #[derive(Serialize)]
 pub struct AddRecordData {
+    pub source: Option<String>,
+    pub external_id: Option<String>,
+    pub local_external_media_id: Option<u32>,
     pub local_bangumi_id: Option<u32>,
     pub other_id: Option<u32>,
     pub local_other_id: Option<u32>,
     pub bangumi_id: Option<u32>,
+    pub imdb_id: Option<String>,
     pub recorder: Option<String>,
     pub date: Option<NaiveDateTime>,
 }
 
 #[derive(Serialize)]
 pub struct GetRecordData {
+    pub source: Option<String>,
+    pub external_id: Option<String>,
+    pub local_external_media_id: Option<u32>,
     pub local_bangumi_id: Option<u32>,
     pub other_id: Option<u32>,
     pub local_other_id: Option<u32>,
     pub bangumi_id: Option<u32>,
+    pub imdb_id: Option<String>,
     pub recorder: Option<String>,
     pub user_status: Option<i8>,
     pub is_delete: Option<bool>,
@@ -51,10 +61,14 @@ pub async fn add_record(
     let inner = v1_resp.0;
     match inner.status {
         0 => success(AddRecordData {
+            source: inner.source,
+            external_id: inner.external_id,
+            local_external_media_id: inner.local_external_media_id,
             local_bangumi_id: inner.local_bangumi_id,
             other_id: inner.other_id,
             local_other_id: inner.local_other_id,
             bangumi_id: inner.bangumi_id,
+            imdb_id: inner.imdb_id,
             recorder: inner.recorder,
             date: inner.date.map(|d| d.and_hms_opt(0, 0, 0).unwrap()),
         }),
@@ -116,10 +130,14 @@ pub async fn get_recorder(
     let inner = v1_resp.0;
     if inner.status == 0 {
         success(GetRecordData {
+            source: inner.source,
+            external_id: inner.external_id,
+            local_external_media_id: inner.local_external_media_id,
             local_bangumi_id: inner.local_bangumi_id,
             other_id: inner.other_id,
             local_other_id: inner.local_other_id,
             bangumi_id: inner.bangumi_id,
+            imdb_id: inner.imdb_id,
             recorder: inner.recorder,
             user_status: inner.user_status,
             is_delete: inner.is_delete,
@@ -164,6 +182,11 @@ pub struct UpdateRecordBody {
     pub user_status: Option<i32>,
 }
 
+#[derive(Deserialize)]
+pub struct DeleteRecordQuery {
+    pub hard_delete: Option<bool>,
+}
+
 pub async fn get_record_by_bangumi(
     State(pool): State<MySqlPool>,
     Extension(auth_user): Extension<AuthUser>,
@@ -174,11 +197,38 @@ pub async fn get_record_by_bangumi(
         Extension(auth_user),
         Json(GetRecorderQuery {
             bangumi_id: Some(id),
+            imdb_id: None,
+            source: None,
+            external_id: None,
             local_bangumi_id: None,
+            local_external_media_id: None,
             other_id: None,
             local_other_id: None,
         }),
-    ).await
+    )
+    .await
+}
+
+pub async fn get_record_by_imdb(
+    State(pool): State<MySqlPool>,
+    Extension(auth_user): Extension<AuthUser>,
+    Path(id): Path<String>,
+) -> (StatusCode, Json<ApiResponse<GetRecordData>>) {
+    get_recorder(
+        State(pool),
+        Extension(auth_user),
+        Json(GetRecorderQuery {
+            bangumi_id: None,
+            imdb_id: Some(id),
+            source: None,
+            external_id: None,
+            local_bangumi_id: None,
+            local_external_media_id: None,
+            other_id: None,
+            local_other_id: None,
+        }),
+    )
+    .await
 }
 
 pub async fn update_record_by_bangumi(
@@ -192,26 +242,79 @@ pub async fn update_record_by_bangumi(
         Extension(auth_user),
         Json(UpdateRecorderQuery {
             bangumi_id: Some(id as i32),
+            source: None,
+            external_id: None,
+            imdb_id: None,
             recorder: body.recorder,
             user_status: body.user_status,
         }),
-    ).await
+    )
+    .await
+}
+
+pub async fn update_record_by_imdb(
+    State(pool): State<MySqlPool>,
+    Extension(auth_user): Extension<AuthUser>,
+    Path(id): Path<String>,
+    Json(body): Json<UpdateRecordBody>,
+) -> (StatusCode, Json<ApiResponse<()>>) {
+    update_user_recorder(
+        State(pool),
+        Extension(auth_user),
+        Json(UpdateRecorderQuery {
+            bangumi_id: None,
+            source: None,
+            external_id: None,
+            imdb_id: Some(id),
+            recorder: body.recorder,
+            user_status: body.user_status,
+        }),
+    )
+    .await
 }
 
 pub async fn delete_record_by_bangumi(
     State(pool): State<MySqlPool>,
     Extension(auth_user): Extension<AuthUser>,
     Path(id): Path<u32>,
+    Query(query): Query<DeleteRecordQuery>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
     delete_recorder(
         State(pool),
         Extension(auth_user),
         Json(DeleteRecorderQuery {
             bangumi_id: Some(id),
+            source: None,
+            external_id: None,
+            imdb_id: None,
             other_id: None,
             local_other_id: None,
+            hard_delete: query.hard_delete,
         }),
-    ).await
+    )
+    .await
+}
+
+pub async fn delete_record_by_imdb(
+    State(pool): State<MySqlPool>,
+    Extension(auth_user): Extension<AuthUser>,
+    Path(id): Path<String>,
+    Query(query): Query<DeleteRecordQuery>,
+) -> (StatusCode, Json<ApiResponse<()>>) {
+    delete_recorder(
+        State(pool),
+        Extension(auth_user),
+        Json(DeleteRecorderQuery {
+            bangumi_id: None,
+            source: None,
+            external_id: None,
+            imdb_id: Some(id),
+            other_id: None,
+            local_other_id: None,
+            hard_delete: query.hard_delete,
+        }),
+    )
+    .await
 }
 
 pub async fn get_record_by_custom(
@@ -224,25 +327,36 @@ pub async fn get_record_by_custom(
         Extension(auth_user),
         Json(GetRecorderQuery {
             bangumi_id: None,
+            imdb_id: None,
+            source: None,
+            external_id: None,
             local_bangumi_id: None,
+            local_external_media_id: None,
             other_id: Some(id),
             local_other_id: None,
         }),
-    ).await
+    )
+    .await
 }
 
 pub async fn delete_record_by_custom(
     State(pool): State<MySqlPool>,
     Extension(auth_user): Extension<AuthUser>,
     Path(id): Path<u32>,
+    Query(query): Query<DeleteRecordQuery>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
     delete_recorder(
         State(pool),
         Extension(auth_user),
         Json(DeleteRecorderQuery {
             bangumi_id: None,
+            source: None,
+            external_id: None,
+            imdb_id: None,
             other_id: Some(id),
             local_other_id: None,
+            hard_delete: query.hard_delete,
         }),
-    ).await
+    )
+    .await
 }

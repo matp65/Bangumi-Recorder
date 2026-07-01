@@ -1,11 +1,11 @@
+use crate::auth_bearer::{AuthUser, hash_password, verify_password};
 use axum::{
-    extract::{Extension, State},
     Json,
+    extract::{Extension, State},
 };
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
-use chrono::NaiveDate;
-use crate::auth_bearer::{verify_password, hash_password, AuthUser};
 
 #[derive(Debug, Serialize)]
 pub struct UserInfo {
@@ -86,9 +86,9 @@ pub async fn update_info(
         Err(e) => log::error!("Failed to update user info for {}: {:?}", user_id, e),
     };
 
-    return Json(UserResponse { 
+    Json(UserResponse {
         status: 0,
-        message: None
+        message: None,
     })
 }
 
@@ -98,9 +98,9 @@ pub async fn update_password(
     Json(payload): Json<UpdatePasswordRequest>,
 ) -> Json<UserResponse> {
     if payload.old_password.is_none() || payload.new_password.is_none() {
-        return Json(UserResponse { 
+        return Json(UserResponse {
             status: 1,
-            message: Some("Old password and new password are required".to_string())
+            message: Some("Old password and new password are required".to_string()),
         });
     }
 
@@ -108,22 +108,21 @@ pub async fn update_password(
     let old_password = payload.old_password.clone().unwrap();
     let new_password = payload.new_password.clone().unwrap();
 
-    let user_password_hash = sqlx::query!(
-        "SELECT password_hash FROM users WHERE id = ?",
-        user_id
-    )
-    .fetch_optional(&pool)
-    .await;
+    let user_password_hash = sqlx::query!("SELECT password_hash FROM users WHERE id = ?", user_id)
+        .fetch_optional(&pool)
+        .await;
 
     match user_password_hash {
         Ok(Some(record)) => {
             if verify_password(&old_password, &record.password_hash) {
                 let new_password_hash = match hash_password(new_password) {
                     Ok(hash) => hash,
-                    Err(_) => return Json(UserResponse { 
-                        status: 3,
-                        message: Some("Failed to hash new password".to_string())
-                    }),
+                    Err(_) => {
+                        return Json(UserResponse {
+                            status: 3,
+                            message: Some("Failed to hash new password".to_string()),
+                        });
+                    }
                 };
 
                 match sqlx::query!(
@@ -138,25 +137,24 @@ pub async fn update_password(
                     Err(e) => log::error!("Failed to update password for {}: {:?}", user_id, e),
                 }
 
-                Json(UserResponse { 
+                Json(UserResponse {
                     status: 0,
-                    message: Some("Password updated successfully".to_string())
+                    message: Some("Password updated successfully".to_string()),
                 })
             } else {
-                Json(UserResponse { 
+                Json(UserResponse {
                     status: 2,
-                    message: Some("Old password is incorrect".to_string())
+                    message: Some("Old password is incorrect".to_string()),
                 })
             }
-        },
-        Ok(None) => Json(UserResponse { 
+        }
+        Ok(None) => Json(UserResponse {
             status: 4,
-            message: Some("User not found".to_string())
+            message: Some("User not found".to_string()),
         }),
-        Err(_) => Json(UserResponse { 
+        Err(_) => Json(UserResponse {
             status: 5,
-            message: Some("Database error".to_string())
+            message: Some("Database error".to_string()),
         }),
     }
-
 }

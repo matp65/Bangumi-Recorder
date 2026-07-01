@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "DELETE FROM recordings WHERE user_id = ? AND other_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "9e192638d739602d8bb419a4f276381b3f5edef5699ee965b781808490b8ce28"
+}

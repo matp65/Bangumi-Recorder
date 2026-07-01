@@ -25,6 +25,12 @@ const router = createRouter({
           component: () => import('../views/Search.vue'),
         },
         {
+          path: 'detail/imdb/:imdb_id',
+          name: 'ImdbDetail',
+          component: () => import('../views/Detail.vue'),
+          props: true,
+        },
+        {
           path: 'detail/:bangumi_id',
           name: 'Detail',
           component: () => import('../views/Detail.vue'),
