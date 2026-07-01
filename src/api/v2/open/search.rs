@@ -11,8 +11,9 @@ use crate::api::v2::response::{
     ApiResponse, forbidden as v2_forbidden, unauthorized as v2_unauthorized,
 };
 use crate::api::v2::search::{
-    get_bangumi as v2_get_bangumi, get_imdb as v2_get_imdb, search_bangumi as v2_search_bangumi,
-    search_imdb as v2_search_imdb, search_local as v2_search_local,
+    get_bangumi as v2_get_bangumi, get_imdb as v2_get_imdb, get_other as v2_get_other,
+    search_bangumi as v2_search_bangumi, search_imdb as v2_search_imdb,
+    search_local as v2_search_local,
 };
 
 pub use crate::api::search::BangumiItem;
@@ -132,6 +133,19 @@ pub async fn get_imdb(
         }),
     )
     .await
+}
+
+/// GET /api/v2/open/other/:id?token=xxx
+pub async fn get_other(
+    State(pool): State<MySqlPool>,
+    Path(id): Path<u32>,
+    Query(params): Query<BangumiQuery>,
+) -> (StatusCode, Json<ApiResponse<crate::api::search::OtherItem>>) {
+    if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
+        return e;
+    }
+
+    v2_get_other(State(pool), Path(id)).await
 }
 
 /// GET /api/v2/open/bangumi/:id?force=true&token=xxx

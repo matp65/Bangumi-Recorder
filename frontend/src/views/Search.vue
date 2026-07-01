@@ -345,7 +345,7 @@ function canOpenDetail(item: BangumiSearchItem | ImdbSearchItem | LocalSearchIte
       <a-tab-pane key="search" title="搜索条目">
         <div class="search-hero">
           <h1>{{ useLocal ? '本地数据搜索' : onlineSource === 'imdb' ? '搜索 IMDb' : '搜索 Bangumi' }}</h1>
-          <p v-if="useLocal">搜索本地缓存的 Bangumi、IMDb 和自定义条目</p>
+          <p v-if="useLocal">搜索本地缓存的 Bangumi、IMDb 和系统自定义条目</p>
           <p v-else-if="onlineSource === 'imdb'">搜索 IMDb 电影、剧集等条目，添加到你的追踪列表</p>
           <p v-else>搜索 Bangumi 上的动画、书籍、游戏等条目，添加到你的追踪列表</p>
 

@@ -18,7 +18,6 @@ pub struct GetRecorderQuery {
     pub local_bangumi_id: Option<u32>,
     pub local_external_media_id: Option<u32>,
     pub other_id: Option<u32>,
-    pub local_other_id: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -30,7 +29,6 @@ pub struct GetRecorderResponse {
     pub local_external_media_id: Option<u32>,
     pub local_bangumi_id: Option<u32>,
     pub other_id: Option<u32>,
-    pub local_other_id: Option<u32>,
     pub bangumi_id: Option<u32>,
     pub recorder: Option<String>,
     pub user_status: Option<i8>,
@@ -47,7 +45,6 @@ fn empty_response(status: i32) -> GetRecorderResponse {
         local_external_media_id: None,
         local_bangumi_id: None,
         other_id: None,
-        local_other_id: None,
         bangumi_id: None,
         recorder: None,
         user_status: None,
@@ -57,7 +54,6 @@ fn empty_response(status: i32) -> GetRecorderResponse {
 }
 
 struct RecordingRow {
-    id: u32,
     bangumi_id: Option<u32>,
     external_media_id: Option<u32>,
     other_id: Option<u32>,
@@ -70,30 +66,16 @@ struct RecordingRow {
 async fn respond_other(
     pool: &MySqlPool,
     user_id: i64,
-    other_id: Option<u32>,
-    local_other_id: Option<u32>,
+    other_id: u32,
 ) -> Json<GetRecorderResponse> {
-    let row = if let Some(other_id) = other_id {
-        sqlx::query_as!(
-            RecordingRow,
-            "SELECT id, bangumi_id, external_media_id, other_id, recorder, status, is_delete, updated_at FROM recordings WHERE user_id = ? AND other_id = ? AND is_delete = 0",
-            user_id,
-            other_id
-        )
-        .fetch_optional(pool)
-        .await
-    } else if let Some(local_other_id) = local_other_id {
-        sqlx::query_as!(
-            RecordingRow,
-            "SELECT id, bangumi_id, external_media_id, other_id, recorder, status, is_delete, updated_at FROM recordings WHERE user_id = ? AND id = ? AND is_delete = 0",
-            user_id,
-            local_other_id
-        )
-        .fetch_optional(pool)
-        .await
-    } else {
-        return Json(empty_response(-2));
-    };
+    let row = sqlx::query_as!(
+        RecordingRow,
+        "SELECT bangumi_id, external_media_id, other_id, recorder, status, is_delete, updated_at FROM recordings WHERE user_id = ? AND other_id = ? AND is_delete = 0",
+        user_id,
+        other_id
+    )
+    .fetch_optional(pool)
+    .await;
 
     match row {
         Ok(Some(r)) => Json(GetRecorderResponse {
@@ -104,7 +86,6 @@ async fn respond_other(
             local_external_media_id: r.external_media_id,
             local_bangumi_id: r.bangumi_id,
             other_id: r.other_id,
-            local_other_id: Some(r.id),
             bangumi_id: None,
             recorder: r.recorder,
             user_status: Some(r.status),
@@ -118,8 +99,7 @@ async fn respond_other(
             imdb_id: None,
             local_external_media_id: None,
             local_bangumi_id: None,
-            other_id,
-            local_other_id,
+            other_id: Some(other_id),
             bangumi_id: None,
             recorder: None,
             user_status: None,
@@ -233,19 +213,12 @@ pub async fn get_recorder(
         && params.local_bangumi_id.is_none()
         && params.local_external_media_id.is_none()
         && params.other_id.is_none()
-        && params.local_other_id.is_none()
     {
         return Json(empty_response(-2));
     }
 
-    if params.other_id.is_some() || params.local_other_id.is_some() {
-        return respond_other(
-            &pool,
-            auth_user.user_id,
-            params.other_id,
-            params.local_other_id,
-        )
-        .await;
+    if let Some(other_id) = params.other_id {
+        return respond_other(&pool, auth_user.user_id, other_id).await;
     }
 
     if let Ok(Some((local_id, external_id))) = resolve_external_media(&pool, &params).await {
@@ -265,7 +238,6 @@ pub async fn get_recorder(
                 local_external_media_id: Some(local_id),
                 local_bangumi_id: None,
                 other_id: None,
-                local_other_id: None,
                 bangumi_id: None,
                 recorder: r.recorder,
                 user_status: Some(r.status),
@@ -280,7 +252,6 @@ pub async fn get_recorder(
                 local_external_media_id: Some(local_id),
                 local_bangumi_id: None,
                 other_id: None,
-                local_other_id: None,
                 bangumi_id: None,
                 recorder: None,
                 user_status: None,
@@ -316,11 +287,10 @@ pub async fn get_recorder(
             source: Some("bangumi".to_string()),
             external_id: Some(external_id.clone()),
             imdb_id: None,
-            local_external_media_id: None,
-            local_bangumi_id: Some(local_id),
-            other_id: None,
-            local_other_id: None,
-            bangumi_id: external_id.parse::<u32>().ok(),
+                local_external_media_id: None,
+                local_bangumi_id: Some(local_id),
+                other_id: None,
+                bangumi_id: external_id.parse::<u32>().ok(),
             recorder: r.recorder,
             user_status: Some(r.status),
             is_delete: Some(r.is_delete != 0),
@@ -331,11 +301,10 @@ pub async fn get_recorder(
             source: Some("bangumi".to_string()),
             external_id: Some(external_id.clone()),
             imdb_id: None,
-            local_external_media_id: None,
-            local_bangumi_id: Some(local_id),
-            other_id: None,
-            local_other_id: None,
-            bangumi_id: external_id.parse::<u32>().ok(),
+                local_external_media_id: None,
+                local_bangumi_id: Some(local_id),
+                other_id: None,
+                bangumi_id: external_id.parse::<u32>().ok(),
             recorder: None,
             user_status: None,
             is_delete: None,

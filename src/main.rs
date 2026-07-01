@@ -244,6 +244,7 @@ async fn main() {
         )
         .route("/imdb/search", get(api::v2::search::search_imdb))
         .route("/imdb/:id", get(api::v2::search::get_imdb))
+        .route("/other/:id", get(api::v2::search::get_other))
         // Records
         .route(
             "/records",
@@ -265,6 +266,7 @@ async fn main() {
         .route(
             "/records/custom/:id",
             get(api::v2::record::get_record_by_custom)
+                .patch(api::v2::record::update_record_by_custom)
                 .delete(api::v2::record::delete_record_by_custom),
         )
         // Per-user episode tracking
@@ -329,6 +331,7 @@ async fn main() {
         .route(
             "/records/custom/:id",
             get(api::v2::open::record::get_record_by_custom)
+                .patch(api::v2::open::record::update_record_by_custom)
                 .delete(api::v2::open::record::delete_record_by_custom),
         )
         .route("/me", get(api::v2::open::user::get_info))
@@ -340,6 +343,7 @@ async fn main() {
         )
         .route("/imdb/search", get(api::v2::open::search::search_imdb))
         .route("/imdb/:id", get(api::v2::open::search::get_imdb))
+        .route("/other/:id", get(api::v2::open::search::get_other))
         .route("/search/local", get(api::v2::open::search::search_local))
         // Episodes (per-user tracking)
         .route(

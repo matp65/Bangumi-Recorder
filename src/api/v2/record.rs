@@ -29,7 +29,6 @@ pub struct AddRecordData {
     pub local_external_media_id: Option<u32>,
     pub local_bangumi_id: Option<u32>,
     pub other_id: Option<u32>,
-    pub local_other_id: Option<u32>,
     pub bangumi_id: Option<u32>,
     pub imdb_id: Option<String>,
     pub recorder: Option<String>,
@@ -43,7 +42,6 @@ pub struct GetRecordData {
     pub local_external_media_id: Option<u32>,
     pub local_bangumi_id: Option<u32>,
     pub other_id: Option<u32>,
-    pub local_other_id: Option<u32>,
     pub bangumi_id: Option<u32>,
     pub imdb_id: Option<String>,
     pub recorder: Option<String>,
@@ -66,7 +64,6 @@ pub async fn add_record(
             local_external_media_id: inner.local_external_media_id,
             local_bangumi_id: inner.local_bangumi_id,
             other_id: inner.other_id,
-            local_other_id: inner.local_other_id,
             bangumi_id: inner.bangumi_id,
             imdb_id: inner.imdb_id,
             recorder: inner.recorder,
@@ -135,7 +132,6 @@ pub async fn get_recorder(
             local_external_media_id: inner.local_external_media_id,
             local_bangumi_id: inner.local_bangumi_id,
             other_id: inner.other_id,
-            local_other_id: inner.local_other_id,
             bangumi_id: inner.bangumi_id,
             imdb_id: inner.imdb_id,
             recorder: inner.recorder,
@@ -180,6 +176,11 @@ pub async fn get_detail_list(
 pub struct UpdateRecordBody {
     pub recorder: Option<String>,
     pub user_status: Option<i32>,
+    pub other_title: Option<String>,
+    pub other_description: Option<String>,
+    pub other_cover: Option<String>,
+    pub other_max_number: Option<i32>,
+    pub other_status: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -203,7 +204,6 @@ pub async fn get_record_by_bangumi(
             local_bangumi_id: None,
             local_external_media_id: None,
             other_id: None,
-            local_other_id: None,
         }),
     )
     .await
@@ -225,7 +225,6 @@ pub async fn get_record_by_imdb(
             local_bangumi_id: None,
             local_external_media_id: None,
             other_id: None,
-            local_other_id: None,
         }),
     )
     .await
@@ -247,6 +246,12 @@ pub async fn update_record_by_bangumi(
             imdb_id: None,
             recorder: body.recorder,
             user_status: body.user_status,
+            other_id: None,
+            other_title: None,
+            other_description: None,
+            other_cover: None,
+            other_max_number: None,
+            other_status: None,
         }),
     )
     .await
@@ -268,6 +273,12 @@ pub async fn update_record_by_imdb(
             imdb_id: Some(id),
             recorder: body.recorder,
             user_status: body.user_status,
+            other_id: None,
+            other_title: None,
+            other_description: None,
+            other_cover: None,
+            other_max_number: None,
+            other_status: None,
         }),
     )
     .await
@@ -288,7 +299,6 @@ pub async fn delete_record_by_bangumi(
             external_id: None,
             imdb_id: None,
             other_id: None,
-            local_other_id: None,
             hard_delete: query.hard_delete,
         }),
     )
@@ -310,7 +320,6 @@ pub async fn delete_record_by_imdb(
             external_id: None,
             imdb_id: Some(id),
             other_id: None,
-            local_other_id: None,
             hard_delete: query.hard_delete,
         }),
     )
@@ -333,7 +342,33 @@ pub async fn get_record_by_custom(
             local_bangumi_id: None,
             local_external_media_id: None,
             other_id: Some(id),
-            local_other_id: None,
+        }),
+    )
+    .await
+}
+
+pub async fn update_record_by_custom(
+    State(pool): State<MySqlPool>,
+    Extension(auth_user): Extension<AuthUser>,
+    Path(id): Path<u32>,
+    Json(body): Json<UpdateRecordBody>,
+) -> (StatusCode, Json<ApiResponse<()>>) {
+    update_user_recorder(
+        State(pool),
+        Extension(auth_user),
+        Json(UpdateRecorderQuery {
+            bangumi_id: None,
+            source: None,
+            external_id: None,
+            imdb_id: None,
+            recorder: body.recorder,
+            user_status: body.user_status,
+            other_id: Some(id),
+            other_title: body.other_title,
+            other_description: body.other_description,
+            other_cover: body.other_cover,
+            other_max_number: body.other_max_number,
+            other_status: body.other_status,
         }),
     )
     .await
@@ -354,7 +389,6 @@ pub async fn delete_record_by_custom(
             external_id: None,
             imdb_id: None,
             other_id: Some(id),
-            local_other_id: None,
             hard_delete: query.hard_delete,
         }),
     )

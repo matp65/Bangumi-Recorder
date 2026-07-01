@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { api, type BangumiItem, type ImdbItem, type GetRecordData, type EpisodeItem } from '../api'
+import { api, type BangumiItem, type ImdbItem, type OtherItem, type GetRecordData, type EpisodeItem } from '../api'
 import { Message, Modal } from '@arco-design/web-vue'
 import { IconArrowLeft, IconDelete, IconDown, IconUp, IconRefresh } from '@arco-design/web-vue/es/icon'
 
-const props = defineProps<{ bangumi_id?: string; imdb_id?: string }>()
+const props = defineProps<{ bangumi_id?: string; imdb_id?: string; other_id?: string }>()
 const router = useRouter()
 
-const info = ref<BangumiItem | ImdbItem | null>(null)
+const info = ref<BangumiItem | ImdbItem | OtherItem | null>(null)
 const recorder = ref<GetRecordData | null>(null)
 const loading = ref(true)
 const updating = ref(false)
@@ -17,9 +17,12 @@ const removing = ref(false)
 const epInput = ref<number | undefined>(undefined)
 const timeInput = ref('')
 const userStatus = ref<number>(1)
+const customEdit = ref({ title: '', description: '', cover: '', maxNumber: undefined as number | undefined, status: 2 })
+const savingCustom = ref(false)
 
 const isImdb = computed(() => !!props.imdb_id)
-const mediaId = computed(() => props.imdb_id || props.bangumi_id || '')
+const isCustom = computed(() => !!props.other_id)
+const mediaId = computed(() => props.imdb_id || props.other_id || props.bangumi_id || '')
 const hasRecord = computed(() => !!recorder.value?.date && recorder.value?.is_delete === false)
 
 const typeLabels: Record<number, string> = {
@@ -53,7 +56,7 @@ const episodeList = ref<EpisodeItem[]>([])
 const episodeLoading = ref(false)
 
 async function loadEpisodes(force = false) {
-  if (isImdb.value || !props.bangumi_id) return
+  if (isImdb.value || isCustom.value || !props.bangumi_id) return
   if (!force && episodeList.value.length > 0) {
     episodeExpanded.value = !episodeExpanded.value
     return
@@ -97,17 +100,32 @@ function formatTime(sec: number | null): string {
 async function fetchData() {
   loading.value = true
   try {
-    const [infoRes, recordRes] = isImdb.value
+    const [infoRes, recordRes] = isCustom.value
       ? await Promise.all([
-          api.searchImdbById(mediaId.value),
-          api.getRecordByImdb(mediaId.value),
+          api.getOtherById(parseInt(props.other_id || '0')),
+          api.getRecordByCustom(parseInt(props.other_id || '0')),
         ])
-      : await Promise.all([
-          api.searchBangumiById(parseInt(props.bangumi_id || '0')),
-          api.getRecordByBangumi(parseInt(props.bangumi_id || '0')),
-        ])
+      : isImdb.value
+        ? await Promise.all([
+            api.searchImdbById(mediaId.value),
+            api.getRecordByImdb(mediaId.value),
+          ])
+        : await Promise.all([
+            api.searchBangumiById(parseInt(props.bangumi_id || '0')),
+            api.getRecordByBangumi(parseInt(props.bangumi_id || '0')),
+          ])
     if (infoRes.status === 0 && infoRes.data) {
       info.value = infoRes.data
+      if (isCustom.value) {
+        const other = infoRes.data as OtherItem
+        customEdit.value = {
+          title: other.title,
+          description: other.description,
+          cover: other.cover_url,
+          maxNumber: other.episodes || undefined,
+          status: other.status ?? 2,
+        }
+      }
     }
     if (recordRes.status === 0 && recordRes.data) {
       recorder.value = recordRes.data
@@ -149,9 +167,11 @@ async function handleUpdate() {
   const recorderValue = timeInput.value ? `${ep}|${timeInput.value}` : String(ep)
   updating.value = true
   try {
-    const res = isImdb.value
-      ? await api.updateRecordByImdb(mediaId.value, recorderValue)
-      : await api.updateRecord(parseInt(props.bangumi_id || '0'), recorderValue)
+    const res = isCustom.value
+      ? await api.updateRecordByCustom(parseInt(props.other_id || '0'), { recorder: recorderValue })
+      : isImdb.value
+        ? await api.updateRecordByImdb(mediaId.value, recorderValue)
+        : await api.updateRecord(parseInt(props.bangumi_id || '0'), recorderValue)
     if (res.status === 0) {
       Message.success('进度更新成功')
       recorder.value = { ...recorder.value, recorder: recorderValue } as GetRecordData
@@ -168,9 +188,11 @@ async function handleUpdate() {
 async function handleStatusChange(value: number) {
   userStatus.value = value
   if (!hasRecord.value) return
-  const res = isImdb.value
-    ? await api.updateRecordByImdb(mediaId.value, undefined, value)
-    : await api.updateRecord(parseInt(props.bangumi_id || '0'), undefined, value)
+  const res = isCustom.value
+    ? await api.updateRecordByCustom(parseInt(props.other_id || '0'), { user_status: value })
+    : isImdb.value
+      ? await api.updateRecordByImdb(mediaId.value, undefined, value)
+      : await api.updateRecord(parseInt(props.bangumi_id || '0'), undefined, value)
   if (res.status === 0) {
     Message.success('状态更新成功')
   } else {
@@ -182,9 +204,11 @@ async function handleAddRecord() {
   if (!info.value) return
   adding.value = true
   try {
-    const res = isImdb.value
-      ? await api.addRecord({ source: 'imdb', external_id: mediaId.value, user_status: userStatus.value })
-      : await api.addRecord({ bangumi_id: parseInt(props.bangumi_id || '0'), user_status: userStatus.value })
+    const res = isCustom.value
+      ? await api.addRecord({ other_id: parseInt(props.other_id || '0'), user_status: userStatus.value })
+      : isImdb.value
+        ? await api.addRecord({ source: 'imdb', external_id: mediaId.value, user_status: userStatus.value })
+        : await api.addRecord({ bangumi_id: parseInt(props.bangumi_id || '0'), user_status: userStatus.value })
     if (res.status === 0) {
       Message.success('添加追踪成功')
       await fetchData()
@@ -208,9 +232,11 @@ async function handleDelete(hardDelete = false) {
     async onOk() {
       removing.value = true
       try {
-        const res = isImdb.value
-          ? await api.deleteRecordByImdb(mediaId.value, hardDelete)
-          : await api.deleteRecordByBangumi(parseInt(props.bangumi_id || '0'), hardDelete)
+        const res = isCustom.value
+          ? await api.deleteRecordByCustom(parseInt(props.other_id || '0'), hardDelete)
+          : isImdb.value
+            ? await api.deleteRecordByImdb(mediaId.value, hardDelete)
+            : await api.deleteRecordByBangumi(parseInt(props.bangumi_id || '0'), hardDelete)
         if (res.status === 0) {
           Message.success('删除成功')
           router.push('/')
@@ -224,6 +250,34 @@ async function handleDelete(hardDelete = false) {
       }
     },
   })
+}
+
+async function handleCustomSave() {
+  if (!isCustom.value) return
+  if (!customEdit.value.title.trim()) {
+    Message.warning('请输入条目名称')
+    return
+  }
+  savingCustom.value = true
+  try {
+    const res = await api.updateRecordByCustom(parseInt(props.other_id || '0'), {
+      other_title: customEdit.value.title.trim(),
+      other_description: customEdit.value.description,
+      other_cover: customEdit.value.cover,
+      other_max_number: customEdit.value.maxNumber,
+      other_status: customEdit.value.status,
+    })
+    if (res.status === 0) {
+      Message.success('条目信息更新成功')
+      await fetchData()
+    } else {
+      Message.error(res.message || '更新失败')
+    }
+  } catch {
+    Message.error('网络请求失败')
+  } finally {
+    savingCustom.value = false
+  }
 }
 
 onMounted(fetchData)
@@ -284,6 +338,26 @@ onMounted(fetchData)
               {{ info.description }}
             </p>
           </div>
+
+          <a-card v-if="isCustom && hasRecord" title="编辑自定义条目" :body-style="{ padding: '16px' }" style="margin-bottom: 24px">
+            <a-form :model="customEdit" layout="vertical">
+              <a-form-item label="条目名称" required>
+                <a-input v-model="customEdit.title" :max-length="255" />
+              </a-form-item>
+              <a-form-item label="描述">
+                <a-textarea v-model="customEdit.description" :auto-size="{ minRows: 2, maxRows: 4 }" :max-length="2000" />
+              </a-form-item>
+              <a-form-item label="封面图片 URL">
+                <a-input v-model="customEdit.cover" />
+              </a-form-item>
+              <a-form-item label="总数">
+                <a-input-number v-model="customEdit.maxNumber" :min="0" :style="{ width: '100%' }" />
+              </a-form-item>
+              <a-button type="primary" :loading="savingCustom" @click="handleCustomSave">
+                保存条目信息
+              </a-button>
+            </a-form>
+          </a-card>
 
           <a-divider />
 
@@ -377,9 +451,9 @@ onMounted(fetchData)
             </div>
           </div>
 
-          <a-divider v-if="!isImdb" />
+          <a-divider v-if="!isImdb && !isCustom" />
 
-          <div v-if="!isImdb" style="display: flex; align-items: center; gap: 8px">
+          <div v-if="!isImdb && !isCustom" style="display: flex; align-items: center; gap: 8px">
             <a-button type="text" size="large" @click="loadEpisodes()">
               {{ episodeExpanded ? '收起剧集列表' : '展开剧集列表' }}
               <icon-down v-if="!episodeExpanded" />
@@ -392,7 +466,7 @@ onMounted(fetchData)
             </a-tooltip>
           </div>
 
-          <a-spin v-if="!isImdb" :loading="episodeLoading">
+          <a-spin v-if="!isImdb && !isCustom" :loading="episodeLoading">
             <div v-if="episodeExpanded && episodeList.length > 0" style="margin-top: 8px">
               <div
                 v-for="ep in episodeList"

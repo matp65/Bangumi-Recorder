@@ -18,7 +18,6 @@ pub struct DeleteRecorderQuery {
     pub external_id: Option<String>,
     pub imdb_id: Option<String>,
     pub other_id: Option<u32>,
-    pub local_other_id: Option<u32>,
     pub hard_delete: Option<bool>,
     pub token: Option<String>,
 }
@@ -44,7 +43,6 @@ pub async fn delete_recorder(
             external_id: params.external_id,
             imdb_id: params.imdb_id,
             other_id: params.other_id,
-            local_other_id: params.local_other_id,
             hard_delete: params.hard_delete,
         }),
     )

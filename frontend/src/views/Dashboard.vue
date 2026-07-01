@@ -96,6 +96,16 @@ function goDetail(bangumiId: string) {
   router.push({ name: 'Detail', params: { bangumi_id: bangumiId } })
 }
 
+function goItemDetail(item: DetailListItem) {
+  if (isBangumi(item) && item.bangumi_id) {
+    router.push({ name: 'Detail', params: { bangumi_id: item.bangumi_id } })
+  } else if (isImdb(item) && item.imdb_id) {
+    router.push({ name: 'ImdbDetail', params: { imdb_id: item.imdb_id } })
+  } else if (item.other_id) {
+    router.push({ name: 'CustomDetail', params: { other_id: item.other_id } })
+  }
+}
+
 const deleting = ref<Record<string, boolean>>({})
 
 async function handleDelete(item: DetailListItem, hardDelete = false) {
@@ -214,7 +224,7 @@ onMounted(fetchRecords)
           hoverable
           class="bangumi-card"
           :class="{ 'is-other': !isBangumi(item) }"
-          @click="isBangumi(item) && item.bangumi_id && goDetail(item.bangumi_id)"
+          @click="goItemDetail(item)"
           :body-style="{ padding: '16px' }"
         >
           <div style="display: flex; gap: 12px">

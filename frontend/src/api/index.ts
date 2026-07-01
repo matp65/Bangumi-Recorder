@@ -104,6 +104,19 @@ export interface ImdbItem {
   description: string
 }
 
+export interface OtherItem {
+  source: 'custom'
+  other_id: number
+  title: string
+  cover_url: string
+  type: number
+  author: string
+  release_date: string | null
+  episodes: number
+  description: string
+  status?: number | null
+}
+
 export interface DetailListItem {
   id: number
   source: string | null
@@ -111,7 +124,6 @@ export interface DetailListItem {
   local_external_media_id: number | null
   local_bangumi_id: number | null
   other_id: number | null
-  local_other_id: number | null
   bangumi_id: string | null
   imdb_id: string | null
   title: string | null
@@ -189,7 +201,6 @@ export interface AddRecordData {
   local_external_media_id?: number
   local_bangumi_id?: number
   other_id?: number
-  local_other_id?: number
   bangumi_id?: number
   recorder?: string
   date?: string
@@ -202,7 +213,6 @@ export interface GetRecordData {
   local_external_media_id?: number
   local_bangumi_id?: number
   other_id?: number
-  local_other_id?: number
   bangumi_id?: number
   recorder?: string
   user_status?: number
@@ -336,6 +346,10 @@ export const api = {
     return request<ApiResponse<ImdbItem>>(`/api/v2/imdb/${encodeURIComponent(id)}${query ? `?${query}` : ''}`)
   },
 
+  getOtherById(id: number) {
+    return request<ApiResponse<OtherItem>>(`/api/v2/other/${id}`)
+  },
+
   searchLocal(keyword?: string, id?: number, page?: number, pageSize?: number) {
     const params = new URLSearchParams()
     if (keyword) params.set('q', keyword)
@@ -380,6 +394,13 @@ export const api = {
     return request<ApiResponse<null>>(`/api/v2/records/imdb/${encodeURIComponent(imdbId)}`, {
       method: 'PATCH',
       body: { recorder, user_status },
+    })
+  },
+
+  updateRecordByCustom(id: number, data: { recorder?: string; user_status?: number; other_title?: string; other_description?: string; other_cover?: string; other_max_number?: number; other_status?: number }) {
+    return request<ApiResponse<null>>(`/api/v2/records/custom/${id}`, {
+      method: 'PATCH',
+      body: data,
     })
   },
 

@@ -1465,7 +1465,6 @@ components:
         local_external_media_id: { type: integer, nullable: true }
         local_bangumi_id: { type: integer, nullable: true }
         other_id: { type: integer, nullable: true }
-        local_other_id: { type: integer, nullable: true }
         bangumi_id: { type: string, nullable: true }
         imdb_id: { type: string, nullable: true }
         title: { type: string, nullable: true }
@@ -1550,7 +1549,6 @@ components:
         local_external_media_id: { type: integer, nullable: true }
         local_bangumi_id: { type: integer, nullable: true }
         other_id: { type: integer, nullable: true }
-        local_other_id: { type: integer, nullable: true }
         bangumi_id: { type: integer, nullable: true }
         recorder: { type: string, nullable: true }
         date: { type: string, nullable: true, format: date }
@@ -1564,7 +1562,6 @@ components:
         local_external_media_id: { type: integer, nullable: true }
         local_bangumi_id: { type: integer, nullable: true }
         other_id: { type: integer, nullable: true }
-        local_other_id: { type: integer, nullable: true }
         bangumi_id: { type: integer, nullable: true }
         recorder: { type: string, nullable: true }
         user_status: { type: integer, nullable: true }

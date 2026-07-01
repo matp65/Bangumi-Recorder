@@ -15,7 +15,6 @@ pub struct DeleteRecorderQuery {
     pub external_id: Option<String>,
     pub imdb_id: Option<String>,
     pub other_id: Option<u32>,
-    pub local_other_id: Option<u32>,
     pub hard_delete: Option<bool>,
 }
 
@@ -38,27 +37,6 @@ pub async fn delete_recorder(
     Json(params): Json<DeleteRecorderQuery>,
 ) -> Json<DeleteRecorderResponse> {
     let hard_delete = params.hard_delete.unwrap_or(false);
-
-    if let Some(local_other_id) = params.local_other_id {
-        let result = if hard_delete {
-            sqlx::query!(
-                "DELETE FROM recordings WHERE user_id = ? AND id = ?",
-                auth_user.user_id,
-                local_other_id
-            )
-            .execute(&pool)
-            .await
-        } else {
-            sqlx::query!(
-                "UPDATE recordings SET is_delete = 1 WHERE user_id = ? AND id = ? AND is_delete = 0",
-                auth_user.user_id,
-                local_other_id
-            )
-            .execute(&pool)
-            .await
-        };
-        return delete_by_sql_result(result, hard_delete);
-    }
 
     if let Some(other_id) = params.other_id {
         let result = if hard_delete {

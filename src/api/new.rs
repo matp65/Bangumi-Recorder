@@ -19,7 +19,6 @@ pub struct AddRecordResponse {
     pub local_external_media_id: Option<u32>,
     pub local_bangumi_id: Option<u32>,
     pub other_id: Option<u32>,
-    pub local_other_id: Option<u32>,
     pub bangumi_id: Option<u32>,
     pub recorder: Option<String>,
     pub date: Option<NaiveDate>,
@@ -57,7 +56,6 @@ fn empty_response(status: i32) -> AddRecordResponse {
         local_external_media_id: None,
         local_bangumi_id: None,
         other_id: None,
-        local_other_id: None,
         bangumi_id: None,
         recorder: None,
         date: None,
@@ -449,7 +447,6 @@ pub async fn add_record(
                     local_external_media_id: None,
                     local_bangumi_id: Some(easy_id),
                     other_id: None,
-                    local_other_id: None,
                     bangumi_id: Some(bangumi_external_id),
                     recorder: Some(recorder),
                     date: Some(today),
@@ -462,7 +459,6 @@ pub async fn add_record(
                     local_external_media_id: None,
                     local_bangumi_id: Some(easy_id),
                     other_id: None,
-                    local_other_id: None,
                     bangumi_id: Some(bangumi_external_id),
                     recorder: Some(recorder),
                     date: None,
@@ -493,7 +489,6 @@ pub async fn add_record(
                     local_external_media_id: Some(media_id),
                     local_bangumi_id: None,
                     other_id: None,
-                    local_other_id: None,
                     bangumi_id: None,
                     recorder: Some(recorder),
                     date: Some(today),
@@ -506,7 +501,6 @@ pub async fn add_record(
                     local_external_media_id: Some(media_id),
                     local_bangumi_id: None,
                     other_id: None,
-                    local_other_id: None,
                     bangumi_id: None,
                     recorder: Some(recorder),
                     date: None,
@@ -523,7 +517,7 @@ pub async fn add_record(
             match save_other_record(&pool, auth_user.user_id, other_id, user_status, &recorder)
                 .await
             {
-                Ok((local_other_id, _)) => Json(AddRecordResponse {
+                Ok((_recording_id, _)) => Json(AddRecordResponse {
                     status: 0,
                     source: Some("custom".to_string()),
                     external_id: None,
@@ -531,7 +525,6 @@ pub async fn add_record(
                     local_external_media_id: None,
                     local_bangumi_id: None,
                     other_id: Some(other_id),
-                    local_other_id,
                     bangumi_id: None,
                     recorder: Some(recorder),
                     date: Some(today),
@@ -544,7 +537,6 @@ pub async fn add_record(
                     local_external_media_id: None,
                     local_bangumi_id: None,
                     other_id: Some(other_id),
-                    local_other_id: None,
                     bangumi_id: None,
                     recorder: Some(recorder),
                     date: None,

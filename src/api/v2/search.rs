@@ -14,7 +14,8 @@ use crate::api::imdb::{
     search_imdb_by_id as v1_search_imdb_by_id,
 };
 use crate::api::search::{
-    BangumiSearchItem, IDSearchQuery, LocalSearchItem, TitleSearchQuery,
+    BangumiSearchItem, IDSearchQuery, LocalSearchItem, OtherItem, TitleSearchQuery,
+    get_other_by_id as v1_get_other_by_id,
     search_bangumi_by_id as v1_search_by_id, search_bangumi_by_title as v1_search_title,
     search_local as v1_search_local,
 };
@@ -204,6 +205,24 @@ pub async fn get_imdb(
         },
         -1 => bad_request("Invalid IMDb id"),
         _ => internal_error("IMDb detail lookup failed"),
+    }
+}
+
+/// GET /api/v2/other/:id
+pub async fn get_other(
+    State(pool): State<MySqlPool>,
+    Path(id): Path<u32>,
+) -> (StatusCode, Json<ApiResponse<OtherItem>>) {
+    let v1_resp = v1_get_other_by_id(State(pool.clone()), Json(IDSearchQuery { id: Some(id) })).await;
+    let inner = v1_resp.0;
+    match inner.status {
+        0 => match inner.data {
+            Some(item) => success(item),
+            None => not_found("Custom item not found"),
+        },
+        -1 => bad_request("Invalid custom item id"),
+        -2 => not_found("Custom item not found"),
+        _ => internal_error("Custom item detail lookup failed"),
     }
 }
 

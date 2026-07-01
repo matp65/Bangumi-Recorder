@@ -615,6 +615,20 @@ pub struct LocalSearchItem {
     pub r#type: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct OtherItem {
+    pub source: String,
+    pub other_id: u32,
+    pub title: String,
+    pub cover_url: String,
+    pub r#type: i8,
+    pub author: String,
+    pub release_date: Option<NaiveDate>,
+    pub episodes: i32,
+    pub description: String,
+    pub status: Option<i8>,
+}
+
 fn media_type_label(source: &str, media_type: i8) -> String {
     match (source, media_type) {
         ("imdb", 1) => "IMDb TV".into(),
@@ -640,6 +654,62 @@ pub struct LocalSearchResponse {
     pub total: Option<i64>,
     pub page: Option<i32>,
     pub page_size: Option<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OtherDetailResponse {
+    pub status: i32,
+    pub data: Option<OtherItem>,
+}
+
+pub async fn get_other_by_id(
+    State(pool): State<MySqlPool>,
+    Json(params): Json<IDSearchQuery>,
+) -> Json<OtherDetailResponse> {
+    let id = match params.id {
+        Some(id) => id,
+        None => {
+            return Json(OtherDetailResponse {
+                status: -1,
+                data: None,
+            });
+        }
+    };
+
+    match sqlx::query!(
+        "SELECT id, name, description, cover_url, max_number, status FROM other_recorders WHERE id = ?",
+        id
+    )
+    .fetch_optional(&pool)
+    .await
+    {
+        Ok(Some(r)) => Json(OtherDetailResponse {
+            status: 0,
+            data: Some(OtherItem {
+                source: "custom".to_string(),
+                other_id: r.id,
+                title: r.name.unwrap_or_else(|| "未命名条目".to_string()),
+                cover_url: r.cover_url.unwrap_or_default(),
+                r#type: 8,
+                author: String::new(),
+                release_date: None,
+                episodes: r.max_number.unwrap_or(0),
+                description: r.description.unwrap_or_default(),
+                status: r.status,
+            }),
+        }),
+        Ok(None) => Json(OtherDetailResponse {
+            status: -2,
+            data: None,
+        }),
+        Err(e) => {
+            log::error!("Failed to query custom item {}: {:?}", id, e);
+            Json(OtherDetailResponse {
+                status: -3,
+                data: None,
+            })
+        }
+    }
 }
 
 pub async fn search_local(
@@ -690,7 +760,7 @@ pub async fn search_local(
         }
 
         let other = sqlx::query!(
-            "SELECT id, name, description, cover_url FROM other_recorders WHERE id = ?",
+            "SELECT id, name, description, cover_url FROM other_recorders WHERE id = ? AND add_user IS NULL",
             id
         )
         .fetch_optional(&pool)
@@ -734,16 +804,16 @@ pub async fn search_local(
             .await
             .unwrap_or(0) as i64;
 
-            let other_count = sqlx::query_scalar!(
-                "SELECT COUNT(*) as cnt FROM other_recorders WHERE name LIKE ?",
+            let imdb_count = sqlx::query_scalar!(
+                "SELECT COUNT(*) as cnt FROM external_media WHERE source = 'imdb' AND title LIKE ?",
                 like_pattern
             )
             .fetch_one(&pool)
             .await
             .unwrap_or(0) as i64;
 
-            let imdb_count = sqlx::query_scalar!(
-                "SELECT COUNT(*) as cnt FROM external_media WHERE source = 'imdb' AND title LIKE ?",
+            let other_count = sqlx::query_scalar!(
+                "SELECT COUNT(*) as cnt FROM other_recorders WHERE name LIKE ? AND add_user IS NULL",
                 like_pattern
             )
             .fetch_one(&pool)
@@ -802,7 +872,7 @@ pub async fn search_local(
             }
 
             let other_rows = sqlx::query!(
-                "SELECT id, name, description, cover_url FROM other_recorders WHERE name LIKE ? ORDER BY id LIMIT ? OFFSET ?",
+                "SELECT id, name, description, cover_url FROM other_recorders WHERE name LIKE ? AND add_user IS NULL ORDER BY id LIMIT ? OFFSET ?",
                 like_pattern,
                 page_size as i64,
                 offset as i64

@@ -31,6 +31,12 @@ const router = createRouter({
           props: true,
         },
         {
+          path: 'detail/custom/:other_id',
+          name: 'CustomDetail',
+          component: () => import('../views/Detail.vue'),
+          props: true,
+        },
+        {
           path: 'detail/:bangumi_id',
           name: 'Detail',
           component: () => import('../views/Detail.vue'),

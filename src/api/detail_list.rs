@@ -22,7 +22,6 @@ pub struct DetailListItem {
     pub local_external_media_id: Option<u32>,
     pub local_bangumi_id: Option<u32>,
     pub other_id: Option<u32>,
-    pub local_other_id: Option<u32>,
     pub bangumi_id: Option<String>,
     pub imdb_id: Option<String>,
     pub title: Option<String>,
@@ -80,7 +79,6 @@ pub async fn get_detail_list(
                     local_external_media_id: None,
                     local_bangumi_id: r.local_bangumi_id,
                     other_id: None,
-                    local_other_id: None,
                     bangumi_id: r.external_id,
                     imdb_id: None,
                     title: r.title,
@@ -141,7 +139,6 @@ pub async fn get_detail_list(
                     local_external_media_id: r.local_external_media_id,
                     local_bangumi_id: None,
                     other_id: None,
-                    local_other_id: None,
                     bangumi_id: None,
                     imdb_id: if r.source.as_deref() == Some("imdb") {
                         r.external_id
@@ -199,7 +196,6 @@ pub async fn get_detail_list(
                     local_external_media_id: r.local_external_media_id,
                     local_bangumi_id: r.local_bangumi_id,
                     other_id: r.other_id,
-                    local_other_id: Some(r.id),
                     bangumi_id: None,
                     imdb_id: None,
                     title: r.title,

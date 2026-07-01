@@ -20,7 +20,6 @@ pub struct GetRecorderQuery {
     pub local_bangumi_id: Option<u32>,
     pub local_external_media_id: Option<u32>,
     pub other_id: Option<u32>,
-    pub local_other_id: Option<u32>,
     pub token: Option<String>,
 }
 
@@ -43,7 +42,6 @@ pub async fn get_recorder(
             local_bangumi_id: params.local_bangumi_id,
             local_external_media_id: params.local_external_media_id,
             other_id: params.other_id,
-            local_other_id: params.local_other_id,
         }),
     )
     .await)

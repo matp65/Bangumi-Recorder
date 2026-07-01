@@ -58,7 +58,6 @@ pub async fn add_record(
                     local_external_media_id: inner.local_external_media_id,
                     local_bangumi_id: inner.local_bangumi_id,
                     other_id: inner.other_id,
-                    local_other_id: inner.local_other_id,
                     bangumi_id: inner.bangumi_id,
                     imdb_id: inner.imdb_id,
                     recorder: inner.recorder,
@@ -148,7 +147,6 @@ pub async fn get_record_by_bangumi(
             local_bangumi_id: None,
             local_external_media_id: None,
             other_id: None,
-            local_other_id: None,
             token: token_q.token,
         }),
     )
@@ -163,7 +161,6 @@ pub async fn get_record_by_bangumi(
                     local_external_media_id: inner.local_external_media_id,
                     local_bangumi_id: inner.local_bangumi_id,
                     other_id: inner.other_id,
-                    local_other_id: inner.local_other_id,
                     bangumi_id: inner.bangumi_id,
                     imdb_id: inner.imdb_id,
                     recorder: inner.recorder,
@@ -200,6 +197,12 @@ pub async fn update_record_by_bangumi(
             imdb_id: None,
             recorder: body.recorder,
             user_status: body.user_status,
+            other_id: None,
+            other_title: None,
+            other_description: None,
+            other_cover: None,
+            other_max_number: None,
+            other_status: None,
             token: token_q.token,
         }),
     )
@@ -237,7 +240,6 @@ pub async fn delete_record_by_bangumi(
             external_id: None,
             imdb_id: None,
             other_id: None,
-            local_other_id: None,
             hard_delete: token_q.hard_delete,
             token: token_q.token,
         }),
@@ -283,7 +285,6 @@ pub async fn get_record_by_imdb(
             local_bangumi_id: None,
             local_external_media_id: None,
             other_id: None,
-            local_other_id: None,
             token: token_q.token,
         }),
     )
@@ -298,7 +299,6 @@ pub async fn get_record_by_imdb(
                     local_external_media_id: inner.local_external_media_id,
                     local_bangumi_id: inner.local_bangumi_id,
                     other_id: inner.other_id,
-                    local_other_id: inner.local_other_id,
                     bangumi_id: inner.bangumi_id,
                     imdb_id: inner.imdb_id,
                     recorder: inner.recorder,
@@ -329,6 +329,12 @@ pub async fn update_record_by_imdb(
             imdb_id: Some(id),
             recorder: body.recorder,
             user_status: body.user_status,
+            other_id: None,
+            other_title: None,
+            other_description: None,
+            other_cover: None,
+            other_max_number: None,
+            other_status: None,
             token: token_q.token,
         }),
     )
@@ -366,7 +372,6 @@ pub async fn delete_record_by_imdb(
             external_id: None,
             imdb_id: Some(id),
             other_id: None,
-            local_other_id: None,
             hard_delete: token_q.hard_delete,
             token: token_q.token,
         }),
@@ -412,7 +417,6 @@ pub async fn get_record_by_custom(
             local_bangumi_id: None,
             local_external_media_id: None,
             other_id: Some(id),
-            local_other_id: None,
             token: token_q.token,
         }),
     )
@@ -427,7 +431,6 @@ pub async fn get_record_by_custom(
                     local_external_media_id: inner.local_external_media_id,
                     local_bangumi_id: inner.local_bangumi_id,
                     other_id: inner.other_id,
-                    local_other_id: inner.local_other_id,
                     bangumi_id: inner.bangumi_id,
                     imdb_id: inner.imdb_id,
                     recorder: inner.recorder,
@@ -437,6 +440,51 @@ pub async fn get_record_by_custom(
                 })
             } else {
                 not_found("Record not found")
+            }
+        }
+        Err(e) => handle_v1_err(e),
+    }
+}
+
+pub async fn update_record_by_custom(
+    State(pool): State<MySqlPool>,
+    Path(id): Path<u32>,
+    Query(token_q): Query<OpenTokenQuery>,
+    Json(body): Json<OpenUpdateBody>,
+) -> (StatusCode, Json<ApiResponse<()>>) {
+    match v1_update_recorder(
+        State(pool.clone()),
+        Query(UpdateRecorderQuery {
+            bangumi_id: None,
+            source: None,
+            external_id: None,
+            imdb_id: None,
+            recorder: body.recorder,
+            user_status: body.user_status,
+            other_id: Some(id),
+            other_title: None,
+            other_description: None,
+            other_cover: None,
+            other_max_number: None,
+            other_status: None,
+            token: token_q.token,
+        }),
+    )
+    .await
+    {
+        Ok(json_resp) => {
+            let inner = json_resp.0;
+            if inner.status == 0 {
+                success_empty()
+            } else {
+                let msg = inner.message.as_deref().unwrap_or("Update failed");
+                if inner.status == -1 {
+                    bad_request(msg)
+                } else if inner.status == -3 {
+                    not_found(msg)
+                } else {
+                    internal_error(msg)
+                }
             }
         }
         Err(e) => handle_v1_err(e),
@@ -456,7 +504,6 @@ pub async fn delete_record_by_custom(
             external_id: None,
             imdb_id: None,
             other_id: Some(id),
-            local_other_id: None,
             hard_delete: token_q.hard_delete,
             token: token_q.token,
         }),

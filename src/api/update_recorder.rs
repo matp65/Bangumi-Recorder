@@ -11,11 +11,17 @@ use crate::auth_bearer::AuthUser;
 #[derive(Deserialize)]
 pub struct UpdateRecorderQuery {
     pub bangumi_id: Option<i32>,
+    pub other_id: Option<u32>,
     pub source: Option<String>,
     pub external_id: Option<String>,
     pub imdb_id: Option<String>,
     pub recorder: Option<String>,
     pub user_status: Option<i32>,
+    pub other_title: Option<String>,
+    pub other_description: Option<String>,
+    pub other_cover: Option<String>,
+    pub other_max_number: Option<i32>,
+    pub other_status: Option<i32>,
 }
 
 #[derive(Serialize)]
@@ -27,6 +33,15 @@ pub struct UpdateRecorderResponse {
 enum UpdateTarget {
     Bangumi(u32),
     Imdb(u32),
+    Other(u32),
+}
+
+fn has_other_metadata(params: &UpdateRecorderQuery) -> bool {
+    params.other_title.is_some()
+        || params.other_description.is_some()
+        || params.other_cover.is_some()
+        || params.other_max_number.is_some()
+        || params.other_status.is_some()
 }
 
 async fn resolve_target(
@@ -49,16 +64,26 @@ async fn resolve_target(
             }
         })
         .and_then(normalize_imdb_id);
-    let target_count = [params.bangumi_id.is_some(), normalized_imdb_id.is_some()]
+    let target_count = [
+        params.bangumi_id.is_some(),
+        normalized_imdb_id.is_some(),
+        params.other_id.is_some(),
+    ]
         .into_iter()
         .filter(|v| *v)
         .count();
 
-    if target_count != 1 || (params.recorder.is_none() && params.user_status.is_none()) {
+    if target_count != 1
+        || (params.recorder.is_none() && params.user_status.is_none() && !has_other_metadata(params))
+    {
         return Err(UpdateRecorderResponse {
             status: -1,
             message: Some("Missing required parameters".to_string()),
         });
+    }
+
+    if let Some(other_id) = params.other_id {
+        return Ok(UpdateTarget::Other(other_id));
     }
 
     if let Some(bangumi_id) = params.bangumi_id {
@@ -136,6 +161,15 @@ pub async fn update_user_recorder(
             .fetch_optional(&pool)
             .await
         }
+        UpdateTarget::Other(other_id) => {
+            sqlx::query_scalar!(
+                "SELECT id FROM recordings WHERE user_id = ? AND other_id = ? AND is_delete = 0",
+                auth_user.user_id,
+                other_id
+            )
+            .fetch_optional(&pool)
+            .await
+        }
     };
 
     let recording = match recording {
@@ -155,25 +189,90 @@ pub async fn update_user_recorder(
         }
     };
 
-    let mut qb = QueryBuilder::<MySql>::new("UPDATE recordings SET ");
-    {
-        let mut separated = qb.separated(", ");
-        if let Some(recorder) = params.recorder.as_ref() {
-            separated.push("recorder = ").push_bind(recorder);
+    if params.recorder.is_some() || params.user_status.is_some() {
+        let mut qb = QueryBuilder::<MySql>::new("UPDATE recordings SET ");
+        {
+            let mut separated = qb.separated(", ");
+            if let Some(recorder) = params.recorder.as_ref() {
+                separated.push("recorder = ").push_bind(recorder);
+            }
+            if let Some(status_val) = params.user_status {
+                separated.push("status = ").push_bind(status_val);
+            }
+            separated.push("updated_at = CURRENT_TIMESTAMP");
         }
-        if let Some(status_val) = params.user_status {
-            separated.push("status = ").push_bind(status_val);
-        }
-        separated.push("updated_at = CURRENT_TIMESTAMP");
-    }
-    qb.push(" WHERE id = ").push_bind(recording);
+        qb.push(" WHERE id = ").push_bind(recording);
 
-    if let Err(e) = qb.build().execute(&pool).await {
-        log::warn!("Failed to update recording {}: {:?}", recording, e);
-        return Json(UpdateRecorderResponse {
-            status: -2,
-            message: Some("Database error".to_string()),
-        });
+        if let Err(e) = qb.build().execute(&pool).await {
+            log::warn!("Failed to update recording {}: {:?}", recording, e);
+            return Json(UpdateRecorderResponse {
+                status: -2,
+                message: Some("Database error".to_string()),
+            });
+        }
+    }
+
+    if let UpdateTarget::Other(other_id) = &target
+        && has_other_metadata(&params)
+    {
+        let owner = sqlx::query_scalar!(
+            "SELECT add_user FROM other_recorders WHERE id = ?",
+            other_id
+        )
+        .fetch_optional(&pool)
+        .await;
+
+        match owner {
+            Ok(Some(Some(add_user))) if add_user as i64 == auth_user.user_id => {}
+            Ok(Some(_)) => {
+                return Json(UpdateRecorderResponse {
+                    status: -4,
+                    message: Some("Custom item is not editable by this user".to_string()),
+                });
+            }
+            Ok(None) => {
+                return Json(UpdateRecorderResponse {
+                    status: -3,
+                    message: Some("Custom item not found".to_string()),
+                });
+            }
+            Err(e) => {
+                log::error!("Failed to query custom item owner: {}", e);
+                return Json(UpdateRecorderResponse {
+                    status: -2,
+                    message: Some("Database error".to_string()),
+                });
+            }
+        }
+
+        let mut qb = QueryBuilder::<MySql>::new("UPDATE other_recorders SET ");
+        {
+            let mut separated = qb.separated(", ");
+            if let Some(title) = params.other_title.as_ref() {
+                separated.push("name = ").push_bind(title);
+            }
+            if let Some(description) = params.other_description.as_ref() {
+                separated.push("description = ").push_bind(description);
+            }
+            if let Some(cover) = params.other_cover.as_ref() {
+                separated.push("cover_url = ").push_bind(cover);
+            }
+            if let Some(max_number) = params.other_max_number {
+                separated.push("max_number = ").push_bind(max_number);
+            }
+            if let Some(status) = params.other_status {
+                separated.push("status = ").push_bind(status);
+            }
+        }
+        qb.push(" WHERE id = ").push_bind(other_id);
+
+        if let Err(e) = qb.build().execute(&pool).await {
+            log::warn!("Failed to update custom item {}: {:?}", other_id, e);
+            return Json(UpdateRecorderResponse {
+                status: -2,
+                message: Some("Database error".to_string()),
+            });
+        }
     }
 
     if let (UpdateTarget::Bangumi(local_id), Some(recorder)) = (&target, params.recorder.as_ref())
