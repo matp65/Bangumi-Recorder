@@ -13,7 +13,16 @@ pub const PERM_ADD_RECORD: u64 = 1 << 4;
 pub const PERM_DELETE_RECORD: u64 = 1 << 5;
 pub const PERM_MODIFY_RECORD: u64 = 1 << 6;
 pub const PERM_CHANGE_STATUS: u64 = 1 << 7;
+pub const PERM_READ_LOGS: u64 = 1 << 8;
 pub const PERM_ALL: u64 = u64::MAX;
+const LEGACY_ALL_COMBINED: u64 = PERM_READ
+    | PERM_WRITE
+    | PERM_VIEW_INFO
+    | PERM_MODIFY_INFO
+    | PERM_ADD_RECORD
+    | PERM_DELETE_RECORD
+    | PERM_MODIFY_RECORD
+    | PERM_CHANGE_STATUS;
 
 // Combined value of all individual permissions (without PERM_ALL).
 // Used by the frontend to compute "Allow All" without JS 32-bit overflow.
@@ -24,7 +33,8 @@ pub const ALL_COMBINED: u64 = PERM_READ
     | PERM_ADD_RECORD
     | PERM_DELETE_RECORD
     | PERM_MODIFY_RECORD
-    | PERM_CHANGE_STATUS;
+    | PERM_CHANGE_STATUS
+    | PERM_READ_LOGS;
 
 pub static PERM_LABELS: &[(&str, u64, &str)] = &[
     ("Read-only", PERM_READ, "View record list and details"),
@@ -59,6 +69,7 @@ pub static PERM_LABELS: &[(&str, u64, &str)] = &[
         PERM_CHANGE_STATUS,
         "Change tracking status",
     ),
+    ("Read Logs", PERM_READ_LOGS, "View user operation logs"),
 ];
 
 pub fn has_perm(perms: u64, required: &[u64]) -> bool {
@@ -66,6 +77,9 @@ pub fn has_perm(perms: u64, required: &[u64]) -> bool {
         return true;
     }
     if perms & ALL_COMBINED == ALL_COMBINED {
+        return true;
+    }
+    if perms & LEGACY_ALL_COMBINED == LEGACY_ALL_COMBINED {
         return true;
     }
     required.iter().any(|&f| perms & f != 0)
@@ -157,4 +171,42 @@ pub async fn require_token_with_perm(
         return Err(StatusCode::FORBIDDEN);
     }
     Ok(info)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn has_perm_accepts_specific_required_permission() {
+        assert!(has_perm(PERM_READ_LOGS, &[PERM_READ_LOGS]));
+        assert!(!has_perm(PERM_READ, &[PERM_READ_LOGS]));
+    }
+
+    #[test]
+    fn has_perm_accepts_current_all_combined() {
+        assert!(has_perm(ALL_COMBINED, &[PERM_READ_LOGS]));
+    }
+
+    #[test]
+    fn has_perm_accepts_legacy_all_combined_for_compatibility() {
+        let legacy_all = PERM_READ
+            | PERM_WRITE
+            | PERM_VIEW_INFO
+            | PERM_MODIFY_INFO
+            | PERM_ADD_RECORD
+            | PERM_DELETE_RECORD
+            | PERM_MODIFY_RECORD
+            | PERM_CHANGE_STATUS;
+
+        assert!(has_perm(legacy_all, &[PERM_READ_LOGS]));
+    }
+
+    #[test]
+    fn hash_token_is_stable_sha256_hex() {
+        assert_eq!(
+            hash_token("token"),
+            "3c469e9d6c5875d37a43f353d4f88e61fcf812c66eee3457465a40b0da4153e0"
+        );
+    }
 }

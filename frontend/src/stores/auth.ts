@@ -24,6 +24,7 @@ export const useAuthStore = defineStore('auth', () => {
   const username = ref<string | null>(localStorage.getItem('username'))
   const nickname = ref<string | null>(null)
   const avatar = ref<string | null>(null)
+  const isAdmin = ref(false)
   const rememberAccount = ref<boolean>(localStorage.getItem('remember_account') === 'true')
 
   function isLoggedIn() {
@@ -68,6 +69,7 @@ export const useAuthStore = defineStore('auth', () => {
       if (res.status === 0 && res.data?.id) {
         nickname.value = res.data.nickname || null
         avatar.value = res.data.avatar || null
+        isAdmin.value = !!res.data.is_admin
       }
     } catch {
     }
@@ -101,6 +103,7 @@ export const useAuthStore = defineStore('auth', () => {
     username.value = null
     nickname.value = null
     avatar.value = null
+    isAdmin.value = false
     localStorage.removeItem('token')
     localStorage.removeItem('username')
     if (rememberAccount.value && savedUsername) {
@@ -108,5 +111,5 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  return { token, username, nickname, avatar, rememberAccount, isLoggedIn, login, register, getConfig, fetchUserInfo, logout, setRememberAccount, saveRememberedUsername, getRememberedUsername }
+  return { token, username, nickname, avatar, isAdmin, rememberAccount, isLoggedIn, login, register, getConfig, fetchUserInfo, logout, setRememberAccount, saveRememberedUsername, getRememberedUsername }
 })

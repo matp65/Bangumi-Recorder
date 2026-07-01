@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT r.id\n        FROM recordings r\n        JOIN bangumi_info_easy b ON r.bangumi_id = b.id\n        WHERE b.external_id = ? AND r.user_id = ?\n        ",
+  "query": "SELECT id FROM recordings WHERE user_id = ? AND external_media_id = ? LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -20,5 +20,5 @@
       false
     ]
   },
-  "hash": "875d1089511df520e94bb93efaf9b795e4a961570913c9f7cf94c99709aac789"
+  "hash": "68e462aaf86415c66e2d8cca1030348e36486afc09224f56583e7dbb4c04d7b5"
 }

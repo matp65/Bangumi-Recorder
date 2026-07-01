@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "SELECT id, name, description, cover_url FROM other_recorders WHERE name LIKE ? ORDER BY id LIMIT ? OFFSET ?",
+  "query": "\n        SELECT r.id, b.id AS bangumi_easy_id, r.recorder\n        FROM recordings r\n        JOIN bangumi_info_easy b ON r.bangumi_id = b.id\n        WHERE b.external_id = ? AND r.user_id = ?\n        ",
   "describe": {
     "columns": [
       {
@@ -14,25 +14,16 @@
       },
       {
         "ordinal": 1,
-        "name": "name",
+        "name": "bangumi_easy_id",
         "type_info": {
-          "type": "VarString",
-          "flags": "",
-          "max_size": 1020
+          "type": "Long",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | AUTO_INCREMENT",
+          "max_size": 10
         }
       },
       {
         "ordinal": 2,
-        "name": "description",
-        "type_info": {
-          "type": "Blob",
-          "flags": "BLOB",
-          "max_size": 262140
-        }
-      },
-      {
-        "ordinal": 3,
-        "name": "cover_url",
+        "name": "recorder",
         "type_info": {
           "type": "VarString",
           "flags": "",
@@ -41,14 +32,13 @@
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 2
     },
     "nullable": [
       false,
-      true,
-      true,
+      false,
       true
     ]
   },
-  "hash": "8104c6d58642b2ae212632506c0f667ebd7bc37ab6180c2e9a89ab59666f8821"
+  "hash": "9acbdbb4b373044f989595e5943591ff28fe88a2e392970bc28be233cd7442b1"
 }

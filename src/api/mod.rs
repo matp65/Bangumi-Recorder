@@ -4,6 +4,7 @@ pub mod detail_list;
 pub mod get_recorder;
 pub mod imdb;
 pub mod list;
+pub mod logs;
 pub mod new;
 pub mod open;
 pub mod search;

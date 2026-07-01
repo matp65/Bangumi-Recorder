@@ -1,17 +1,28 @@
 use axum::{
     Json,
     extract::{Extension, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use serde::Serialize;
 use sqlx::mysql::MySqlPool;
 
 use super::response::{ApiResponse, bad_request, internal_error, success, success_empty};
+use crate::api::logs::{operation_metadata, write_system_log};
 use crate::api::user::{
     UpdatePasswordRequest, UpdateUserInfo, UserInfo, get_info as v1_get_info,
     update_info as v1_update_info, update_password as v1_update_password,
 };
 use crate::auth_bearer::AuthUser;
+
+async fn username_for_log(pool: &MySqlPool, user_id: i64) -> String {
+    sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| format!("user#{}", user_id))
+}
 
 #[derive(Serialize)]
 pub struct TokenData {
@@ -58,6 +69,7 @@ pub async fn update_password(
 pub async fn regenerate_api_token(
     State(pool): State<MySqlPool>,
     Extension(auth_user): Extension<AuthUser>,
+    headers: HeaderMap,
 ) -> (StatusCode, Json<ApiResponse<TokenData>>) {
     let raw_token = uuid::Uuid::new_v4().to_string();
     let token_hash = {
@@ -78,9 +90,31 @@ pub async fn regenerate_api_token(
     .execute(&pool)
     .await
     {
-        Ok(_) => success(TokenData {
-            api_token: raw_token,
-        }),
+        Ok(res) => {
+            let username = username_for_log(&pool, auth_user.user_id).await;
+            write_system_log(
+                &pool,
+                "info",
+                "api_token",
+                "api_token_created",
+                &format!("{} regenerated API Token", username),
+                Some(auth_user.user_id),
+                Some(operation_metadata(
+                    &headers,
+                    "JWT",
+                    serde_json::json!({
+                        "token_id": res.last_insert_id(),
+                        "name": "Regenerated Token",
+                        "permissions": crate::api::api_token::ALL_COMBINED,
+                        "username": username,
+                    }),
+                )),
+            )
+            .await;
+            success(TokenData {
+                api_token: raw_token,
+            })
+        }
         Err(e) => {
             log::error!("Failed to regenerate token: {:?}", e);
             internal_error("Failed to regenerate token")

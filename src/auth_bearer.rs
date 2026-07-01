@@ -7,7 +7,7 @@ use axum::{
     Json as AxumJson,
     body::Body,
     extract::{Extension, Json, State},
-    http::{Request, StatusCode, header::AUTHORIZATION},
+    http::{HeaderMap, Request, StatusCode, header::AUTHORIZATION},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -20,6 +20,7 @@ use sqlx::MySqlPool;
 use std::sync::Arc;
 
 use crate::api::api_token::ALL_COMBINED;
+use crate::api::logs::{operation_metadata, write_system_log};
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
@@ -104,6 +105,7 @@ pub fn verify_password(password: &str, password_hash: &str) -> bool {
 
 pub async fn login(
     State(pool): State<MySqlPool>,
+    headers: HeaderMap,
     Json(payload): Json<LoginRequest>,
 ) -> impl IntoResponse {
     let (username, password) = match (payload.username, payload.password) {
@@ -168,7 +170,7 @@ pub async fn login(
     }
 
     let user_id = row.id as i64;
-    let token = match build_claims(user_id, username, &jwt_secret) {
+    let token = match build_claims(user_id, username.clone(), &jwt_secret) {
         Ok(token) => token,
         Err(_) => {
             return (
@@ -181,6 +183,21 @@ pub async fn login(
             );
         }
     };
+
+    write_system_log(
+        &pool,
+        "info",
+        "auth",
+        "jwt_issued",
+        "User signed in and JWT was issued",
+        Some(user_id),
+        Some(operation_metadata(
+            &headers,
+            "JWT",
+            serde_json::json!({ "username": username }),
+        )),
+    )
+    .await;
 
     (
         StatusCode::OK,

@@ -1,0 +1,24 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT add_user FROM other_recorders WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "add_user",
+        "type_info": {
+          "type": "Long",
+          "flags": "MULTIPLE_KEY | UNSIGNED",
+          "max_size": 10
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "ed37b827e86eb7d1507d30e53b8dc1467b90503aa858a23d97f66ef75f56fa5d"
+}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, type DetailListItem } from '../api'
 import { Message, Modal } from '@arco-design/web-vue'
@@ -9,7 +9,10 @@ import dayjs from 'dayjs'
 const router = useRouter()
 const loading = ref(true)
 const records = ref<DetailListItem[]>([])
-const filterStatus = ref<number>(-1)
+const filterStatus = ref<number>(Number(localStorage.getItem('dashboard.filterStatus') ?? -1))
+const searchKeyword = ref(localStorage.getItem('dashboard.searchKeyword') ?? '')
+const sortBy = ref<'name' | 'time'>((localStorage.getItem('dashboard.sortBy') as 'name' | 'time') || 'time')
+const sortOrder = ref<'asc' | 'desc'>((localStorage.getItem('dashboard.sortOrder') as 'asc' | 'desc') || 'desc')
 
 const filterOptions = [
   { label: '全部', value: -1 },
@@ -21,9 +24,28 @@ const filterOptions = [
 ]
 
 const filteredRecords = computed(() => {
-  if (filterStatus.value === -1) return records.value
-  return records.value.filter(r => r.user_status === filterStatus.value)
+  const keyword = searchKeyword.value.trim().toLowerCase()
+  const filtered = records.value.filter(r => {
+    const statusMatched = filterStatus.value === -1 || r.user_status === filterStatus.value
+    const keywordMatched = !keyword || [r.title, r.bangumi_id, r.imdb_id, r.other_id]
+      .filter(v => v !== null && v !== undefined)
+      .some(v => String(v).toLowerCase().includes(keyword))
+    return statusMatched && keywordMatched
+  })
+
+  return [...filtered].sort((a, b) => {
+    const factor = sortOrder.value === 'asc' ? 1 : -1
+    if (sortBy.value === 'name') {
+      return factor * (a.title || '').localeCompare(b.title || '', 'zh-Hans-CN')
+    }
+    return factor * (dayjs(a.updated_at).valueOf() - dayjs(b.updated_at).valueOf())
+  })
 })
+
+watch(filterStatus, value => localStorage.setItem('dashboard.filterStatus', String(value)))
+watch(searchKeyword, value => localStorage.setItem('dashboard.searchKeyword', value))
+watch(sortBy, value => localStorage.setItem('dashboard.sortBy', value))
+watch(sortOrder, value => localStorage.setItem('dashboard.sortOrder', value))
 
 const typeLabels: Record<number, string> = {
   1: 'TV',
@@ -197,7 +219,7 @@ onMounted(fetchRecords)
       <p style="color: #86909c; font-size: 14px; margin-top: 4px">共 {{ filteredRecords.length }} 个条目</p>
     </div>
 
-    <div style="margin-bottom: 20px">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 20px">
       <a-radio-group
         type="button"
         :model-value="filterStatus"
@@ -211,6 +233,23 @@ onMounted(fetchRecords)
           {{ opt.label }}
         </a-radio>
       </a-radio-group>
+
+      <a-input-search
+        v-model="searchKeyword"
+        placeholder="搜索标题或 ID"
+        allow-clear
+        style="width: 240px"
+      />
+
+      <a-select v-model="sortBy" style="width: 120px">
+        <a-option value="time">按时间</a-option>
+        <a-option value="name">按名字</a-option>
+      </a-select>
+
+      <a-select v-model="sortOrder" style="width: 110px">
+        <a-option value="desc">降序</a-option>
+        <a-option value="asc">升序</a-option>
+      </a-select>
     </div>
 
     <a-spin :loading="loading" style="min-height: 200px">

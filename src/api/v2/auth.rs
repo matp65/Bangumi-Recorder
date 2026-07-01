@@ -1,9 +1,14 @@
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{
+    Json,
+    extract::State,
+    http::{HeaderMap, StatusCode},
+};
 use serde::{Deserialize, Serialize};
 use sqlx::MySqlPool;
 
 use super::response::{ApiResponse, conflict, forbidden, internal_error, success, unauthorized};
 use crate::api::api_token::ALL_COMBINED;
+use crate::api::logs::{operation_metadata, write_system_log};
 use crate::auth_bearer::{
     LoginRequest, RegisterRequest, hash_api_token, hash_password, verify_password,
 };
@@ -58,6 +63,7 @@ fn build_claims(
 
 pub async fn login(
     State(pool): State<MySqlPool>,
+    headers: HeaderMap,
     Json(payload): Json<LoginRequest>,
 ) -> (StatusCode, Json<ApiResponse<LoginData>>) {
     let (username, password) = match (payload.username, payload.password) {
@@ -94,12 +100,27 @@ pub async fn login(
     }
 
     let user_id = row.id as i64;
-    let token = match build_claims(user_id, username, &jwt_secret) {
+    let token = match build_claims(user_id, username.clone(), &jwt_secret) {
         Ok(token) => token,
         Err(_) => {
             return internal_error("Failed to generate token");
         }
     };
+
+    write_system_log(
+        &pool,
+        "info",
+        "auth",
+        "jwt_issued",
+        "User signed in and JWT was issued",
+        Some(user_id),
+        Some(operation_metadata(
+            &headers,
+            "JWT",
+            serde_json::json!({ "username": username }),
+        )),
+    )
+    .await;
 
     success(LoginData { token })
 }

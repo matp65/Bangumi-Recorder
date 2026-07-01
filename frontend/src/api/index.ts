@@ -248,6 +248,7 @@ export interface UserInfo {
   email: string
   avatar: string
   status: number
+  is_admin: boolean
   reg_time: string
 }
 
@@ -288,6 +289,58 @@ export interface ApiTokenItem {
   last_used_at: string | null
   created_at: string
   updated_at: string
+}
+
+export interface RecordingLogItem {
+  id: number
+  recording_id: number | null
+  user_id: number | null
+  target_type: string
+  target_id: number | null
+  target_title: string | null
+  action: string
+  field_name: string | null
+  old_value: unknown
+  new_value: unknown
+  metadata: unknown
+  created_at: string
+}
+
+export interface SystemLogItem {
+  id: number
+  level: string
+  category: string
+  action: string
+  message: string
+  user_id: number | null
+  username: string | null
+  metadata: unknown
+  created_at: string
+}
+
+export interface LogListData<T> {
+  items: T[]
+  page: number
+  page_size: number
+}
+
+export interface RecordingLogFilters {
+  start_time?: string
+  end_time?: string
+  target?: string
+  action?: string
+}
+
+export interface SystemLogFilters {
+  start_time?: string
+  end_time?: string
+  category?: string
+  action?: string
+  username?: string
+}
+
+export interface AutoCleanupSetting {
+  enabled: boolean
 }
 
 export interface CreateTokenData {
@@ -483,6 +536,33 @@ export const api = {
 
   getPermissionLabels() {
     return request<ApiResponse<PermissionLabelsResponse>>('/api/v2/tokens/permissions')
+  },
+
+  listRecordingLogs(page = 1, pageSize = 50, filters: RecordingLogFilters = {}) {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.set(key, value)
+    })
+    return request<ApiResponse<LogListData<RecordingLogItem>>>(`/api/v2/logs/recordings?${params}`)
+  },
+
+  listSystemLogs(page = 1, pageSize = 50, filters: SystemLogFilters = {}) {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.set(key, value)
+    })
+    return request<ApiResponse<LogListData<SystemLogItem>>>(`/api/v2/logs/system?${params}`)
+  },
+
+  getAutoCleanupSetting() {
+    return request<ApiResponse<AutoCleanupSetting>>('/api/v2/settings/auto-cleanup')
+  },
+
+  updateAutoCleanupSetting(enabled: boolean) {
+    return request<ApiResponse<null>>('/api/v2/settings/auto-cleanup', {
+      method: 'PUT',
+      body: { enabled },
+    })
   },
 
   // Episode metadata

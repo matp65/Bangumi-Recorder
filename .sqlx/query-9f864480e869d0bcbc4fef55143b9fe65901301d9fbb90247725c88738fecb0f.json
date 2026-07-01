@@ -1,19 +1,10 @@
 {
   "db_name": "MySQL",
-  "query": "SELECT id, bangumi_id, external_media_id, other_id, recorder, status, is_delete, updated_at FROM recordings WHERE user_id = ? AND id = ? AND is_delete = 0",
+  "query": "SELECT bangumi_id, external_media_id, other_id, recorder, status, is_delete, updated_at FROM recordings WHERE user_id = ? AND other_id = ? AND is_delete = 0",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id",
-        "type_info": {
-          "type": "Long",
-          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | AUTO_INCREMENT",
-          "max_size": 10
-        }
-      },
-      {
-        "ordinal": 1,
         "name": "bangumi_id",
         "type_info": {
           "type": "Long",
@@ -22,7 +13,7 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 1,
         "name": "external_media_id",
         "type_info": {
           "type": "Long",
@@ -31,7 +22,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 2,
         "name": "other_id",
         "type_info": {
           "type": "Long",
@@ -40,7 +31,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 3,
         "name": "recorder",
         "type_info": {
           "type": "VarString",
@@ -49,7 +40,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 4,
         "name": "status",
         "type_info": {
           "type": "Tiny",
@@ -58,7 +49,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 5,
         "name": "is_delete",
         "type_info": {
           "type": "Tiny",
@@ -67,7 +58,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 6,
         "name": "updated_at",
         "type_info": {
           "type": "Datetime",
@@ -80,7 +71,6 @@
       "Right": 2
     },
     "nullable": [
-      false,
       true,
       true,
       true,
@@ -90,5 +80,5 @@
       false
     ]
   },
-  "hash": "5f2c6542fe9344f531a9031c9f0708cae066f10d900eac752e3b2d23a93609a9"
+  "hash": "9f864480e869d0bcbc4fef55143b9fe65901301d9fbb90247725c88738fecb0f"
 }

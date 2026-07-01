@@ -2,7 +2,7 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { IconList, IconSearch, IconUser, IconPoweroff, IconSettings } from '@arco-design/web-vue/es/icon'
+import { IconHistory, IconList, IconSearch, IconUser, IconPoweroff } from '@arco-design/web-vue/es/icon'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -32,6 +32,10 @@ function handleLogout() {
           <a-menu-item key="Search">
             <template #icon><icon-search /></template>
             搜索番剧
+          </a-menu-item>
+          <a-menu-item key="Logs">
+            <template #icon><icon-history /></template>
+            记录日志
           </a-menu-item>
         </a-menu>
       </div>

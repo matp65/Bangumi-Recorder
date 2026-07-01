@@ -7,11 +7,13 @@ use chrono::{NaiveDate, NaiveDateTime, Utc};
 use reqwest::Client;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::QueryBuilder;
 use sqlx::mysql::MySqlPool;
 use std::sync::OnceLock;
 
 use super::response::{ApiResponse, internal_error, not_found, success};
+use crate::api::logs::{LogTarget, write_recording_log};
 use crate::auth_bearer::AuthUser;
 
 fn http_client() -> &'static Client {
@@ -203,9 +205,9 @@ pub async fn update_episode(
 ) -> (StatusCode, Json<ApiResponse<EpisodeItem>>) {
     let bangumi_id_str = bangumi_id.to_string();
 
-    let recording_id = match sqlx::query_scalar!(
+    let recording = match sqlx::query!(
         r#"
-        SELECT r.id
+        SELECT r.id, b.id AS bangumi_easy_id, r.recorder
         FROM recordings r
         JOIN bangumi_info_easy b ON r.bangumi_id = b.id
         WHERE b.external_id = ? AND r.user_id = ?
@@ -216,8 +218,28 @@ pub async fn update_episode(
     .fetch_optional(&pool)
     .await
     {
-        Ok(Some(id)) => id,
+        Ok(Some(row)) => row,
         Ok(None) => return not_found("Recording not found for this bangumi"),
+        Err(e) => {
+            log::error!("DB error: {:?}", e);
+            return internal_error("Database error");
+        }
+    };
+    let recording_id = recording.id;
+
+    let old_episode = match sqlx::query!(
+        r#"
+        SELECT watched, progress_seconds, duration_seconds, completed_at
+        FROM episode_records
+        WHERE recording_id = ? AND ordinal = ?
+        "#,
+        recording_id,
+        ordinal
+    )
+    .fetch_optional(&pool)
+    .await
+    {
+        Ok(row) => row,
         Err(e) => {
             log::error!("DB error: {:?}", e);
             return internal_error("Database error");
@@ -293,6 +315,39 @@ pub async fn update_episode(
         }
     };
 
+    let old_episode_value = old_episode.as_ref().map(|old| {
+        json!({
+            "watched": old.watched != 0,
+            "progress_seconds": old.progress_seconds,
+            "duration_seconds": old.duration_seconds,
+            "completed_at": old.completed_at,
+        })
+    });
+    let new_episode_value = json!({
+        "watched": updated.watched,
+        "progress_seconds": updated.progress_seconds,
+        "duration_seconds": updated.duration_seconds,
+        "completed_at": updated.completed_at,
+    });
+    if old_episode_value.as_ref() != Some(&new_episode_value) {
+        write_recording_log(
+            &pool,
+            recording_id,
+            Some(auth_user.user_id),
+            LogTarget::Bangumi(recording.bangumi_easy_id),
+            if old_episode.is_some() {
+                "episode_updated"
+            } else {
+                "episode_created"
+            },
+            None,
+            old_episode_value,
+            Some(new_episode_value),
+            Some(json!({ "ordinal": ordinal, "bangumi_id": bangumi_id })),
+        )
+        .await;
+    }
+
     // Sync main recordings.recorder field: "{max_watched_ordinal}|{mm:ss}"
     let count = sqlx::query_scalar!(
         r#"
@@ -333,6 +388,21 @@ pub async fn update_episode(
     .await
     {
         log::error!("Failed to sync recorder after episode update: {:?}", e);
+    }
+
+    if recording.recorder.as_deref() != Some(new_recorder.as_str()) {
+        write_recording_log(
+            &pool,
+            recording_id,
+            Some(auth_user.user_id),
+            LogTarget::Bangumi(recording.bangumi_easy_id),
+            "recorder_changed",
+            Some("recorder"),
+            recording.recorder.map(|v| json!(v)),
+            Some(json!(new_recorder)),
+            Some(json!({ "source": "episode_update", "ordinal": ordinal })),
+        )
+        .await;
     }
 
     success(updated)

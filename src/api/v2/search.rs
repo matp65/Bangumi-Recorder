@@ -15,9 +15,8 @@ use crate::api::imdb::{
 };
 use crate::api::search::{
     BangumiSearchItem, IDSearchQuery, LocalSearchItem, OtherItem, TitleSearchQuery,
-    get_other_by_id as v1_get_other_by_id,
-    search_bangumi_by_id as v1_search_by_id, search_bangumi_by_title as v1_search_title,
-    search_local as v1_search_local,
+    get_other_by_id as v1_get_other_by_id, search_bangumi_by_id as v1_search_by_id,
+    search_bangumi_by_title as v1_search_title, search_local as v1_search_local,
 };
 
 #[derive(Deserialize)]
@@ -213,7 +212,8 @@ pub async fn get_other(
     State(pool): State<MySqlPool>,
     Path(id): Path<u32>,
 ) -> (StatusCode, Json<ApiResponse<OtherItem>>) {
-    let v1_resp = v1_get_other_by_id(State(pool.clone()), Json(IDSearchQuery { id: Some(id) })).await;
+    let v1_resp =
+        v1_get_other_by_id(State(pool.clone()), Json(IDSearchQuery { id: Some(id) })).await;
     let inner = v1_resp.0;
     match inner.status {
         0 => match inner.data {

@@ -3,9 +3,11 @@ use axum::{
     extract::{Extension, State},
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::mysql::MySqlPool;
 
 use crate::api::imdb::{IMDB_SOURCE, normalize_imdb_id};
+use crate::api::logs::{LogTarget, write_recording_log, write_system_log};
 use crate::auth_bearer::AuthUser;
 
 #[derive(Deserialize)]
@@ -39,24 +41,73 @@ pub async fn delete_recorder(
     let hard_delete = params.hard_delete.unwrap_or(false);
 
     if let Some(other_id) = params.other_id {
-        let result = if hard_delete {
-            sqlx::query!(
-                "DELETE FROM recordings WHERE user_id = ? AND other_id = ?",
-                auth_user.user_id,
-                other_id
-            )
-            .execute(&pool)
-            .await
-        } else {
-            sqlx::query!(
-                "UPDATE recordings SET is_delete = 1 WHERE user_id = ? AND other_id = ? AND is_delete = 0",
-                auth_user.user_id,
-                other_id
-            )
-            .execute(&pool)
-            .await
+        let snapshot = match sqlx::query!(
+            r#"SELECT r.id AS recording_id, r.recorder, r.status AS recording_status,
+                      o.name, o.description, o.cover_url, o.max_number, o.status AS other_status
+               FROM recordings r
+               JOIN other_recorders o ON o.id = r.other_id
+               WHERE r.user_id = ? AND r.other_id = ? AND r.is_delete = 0"#,
+            auth_user.user_id,
+            other_id
+        )
+        .fetch_optional(&pool)
+        .await
+        {
+            Ok(Some(row)) => row,
+            Ok(None) => return response(-3, "Recording not found"),
+            Err(e) => {
+                log::error!("Failed to query custom recording before delete: {}", e);
+                return response(-2, "Database error");
+            }
         };
-        return delete_by_sql_result(result, hard_delete);
+
+        write_recording_log(
+            &pool,
+            snapshot.recording_id,
+            Some(auth_user.user_id),
+            LogTarget::Other(other_id),
+            if hard_delete {
+                "recording_hard_deleted"
+            } else {
+                "recording_deleted"
+            },
+            Some("is_delete"),
+            Some(json!(0)),
+            Some(json!(1)),
+            Some(json!({ "also_delete_original_other_recording": true })),
+        )
+        .await;
+
+        write_system_log(
+            &pool,
+            "info",
+            "recording",
+            "other_recording_deleted",
+            "Deleted custom recording and original custom item",
+            Some(auth_user.user_id),
+            Some(json!({
+                "recording_id": snapshot.recording_id,
+                "other_id": other_id,
+                "hard_delete": hard_delete,
+                "recording": {
+                    "recorder": snapshot.recorder,
+                    "status": snapshot.recording_status,
+                },
+                "other": {
+                    "name": snapshot.name,
+                    "description": snapshot.description,
+                    "cover_url": snapshot.cover_url,
+                    "max_number": snapshot.max_number,
+                    "status": snapshot.other_status,
+                }
+            })),
+        )
+        .await;
+
+        let result = sqlx::query!("DELETE FROM other_recorders WHERE id = ?", other_id)
+            .execute(&pool)
+            .await;
+        return delete_by_sql_result(result, true);
     }
 
     let normalized_imdb_id = params
@@ -100,6 +151,38 @@ pub async fn delete_recorder(
             }
         };
 
+        let recording = match sqlx::query!(
+            "SELECT id, is_delete FROM recordings WHERE user_id = ? AND bangumi_id = ? AND is_delete = 0",
+            auth_user.user_id,
+            local_id
+        )
+        .fetch_optional(&pool)
+        .await
+        {
+            Ok(Some(row)) => row,
+            Ok(None) => return response(-3, "Recording not found"),
+            Err(e) => {
+                log::error!("Failed to query recording before delete: {}", e);
+                return response(-2, "Database error");
+            }
+        };
+        write_recording_log(
+            &pool,
+            recording.id,
+            Some(auth_user.user_id),
+            LogTarget::Bangumi(local_id),
+            if hard_delete {
+                "recording_hard_deleted"
+            } else {
+                "recording_deleted"
+            },
+            Some("is_delete"),
+            Some(json!(recording.is_delete)),
+            Some(json!(1)),
+            None,
+        )
+        .await;
+
         let result = if hard_delete {
             sqlx::query!(
                 "DELETE FROM recordings WHERE user_id = ? AND bangumi_id = ?",
@@ -140,6 +223,38 @@ pub async fn delete_recorder(
             return response(-2, "Database error");
         }
     };
+
+    let recording = match sqlx::query!(
+        "SELECT id, is_delete FROM recordings WHERE user_id = ? AND external_media_id = ? AND is_delete = 0",
+        auth_user.user_id,
+        local_id
+    )
+    .fetch_optional(&pool)
+    .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => return response(-3, "Recording not found"),
+        Err(e) => {
+            log::error!("Failed to query recording before delete: {}", e);
+            return response(-2, "Database error");
+        }
+    };
+    write_recording_log(
+        &pool,
+        recording.id,
+        Some(auth_user.user_id),
+        LogTarget::Imdb(local_id),
+        if hard_delete {
+            "recording_hard_deleted"
+        } else {
+            "recording_deleted"
+        },
+        Some("is_delete"),
+        Some(json!(recording.is_delete)),
+        Some(json!(1)),
+        None,
+    )
+    .await;
 
     let result = if hard_delete {
         sqlx::query!(

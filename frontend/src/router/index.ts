@@ -47,6 +47,11 @@ const router = createRouter({
           name: 'Profile',
           component: () => import('../views/UserPanel.vue'),
         },
+        {
+          path: 'logs',
+          name: 'Logs',
+          component: () => import('../views/Logs.vue'),
+        },
       ],
     },
   ],

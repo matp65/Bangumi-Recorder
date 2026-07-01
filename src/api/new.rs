@@ -4,9 +4,11 @@ use axum::{
 };
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::mysql::MySqlPool;
 
 use crate::api::imdb::{IMDB_SOURCE, ensure_imdb_item_cached, normalize_imdb_id};
+use crate::api::logs::{LogTarget, write_recording_log};
 use crate::api::search::{IDSearchQuery, search_bangumi_by_id};
 use crate::auth_bearer::AuthUser;
 
@@ -439,18 +441,41 @@ pub async fn add_record(
 
             match save_media_record(&pool, auth_user.user_id, easy_id, user_status, &recorder).await
             {
-                Ok(_) => Json(AddRecordResponse {
-                    status: 0,
-                    source: Some("bangumi".to_string()),
-                    external_id: Some(bangumi_external_id.to_string()),
-                    imdb_id: None,
-                    local_external_media_id: None,
-                    local_bangumi_id: Some(easy_id),
-                    other_id: None,
-                    bangumi_id: Some(bangumi_external_id),
-                    recorder: Some(recorder),
-                    date: Some(today),
-                }),
+                Ok(_) => {
+                    if let Ok(Some(recording_id)) = sqlx::query_scalar!(
+                        "SELECT id FROM recordings WHERE user_id = ? AND bangumi_id = ? LIMIT 1",
+                        auth_user.user_id,
+                        easy_id
+                    )
+                    .fetch_optional(&pool)
+                    .await
+                    {
+                        write_recording_log(
+                            &pool,
+                            recording_id,
+                            Some(auth_user.user_id),
+                            LogTarget::Bangumi(easy_id),
+                            "recording_created",
+                            None,
+                            None,
+                            None,
+                            Some(json!({ "recorder": recorder, "status": user_status })),
+                        )
+                        .await;
+                    }
+                    Json(AddRecordResponse {
+                        status: 0,
+                        source: Some("bangumi".to_string()),
+                        external_id: Some(bangumi_external_id.to_string()),
+                        imdb_id: None,
+                        local_external_media_id: None,
+                        local_bangumi_id: Some(easy_id),
+                        other_id: None,
+                        bangumi_id: Some(bangumi_external_id),
+                        recorder: Some(recorder),
+                        date: Some(today),
+                    })
+                }
                 Err(-3) => Json(AddRecordResponse {
                     status: -3,
                     source: Some("bangumi".to_string()),
@@ -481,18 +506,41 @@ pub async fn add_record(
             match save_external_record(&pool, auth_user.user_id, media_id, user_status, &recorder)
                 .await
             {
-                Ok(_) => Json(AddRecordResponse {
-                    status: 0,
-                    source: Some(IMDB_SOURCE.to_string()),
-                    external_id: Some(imdb_id.clone()),
-                    imdb_id: Some(imdb_id),
-                    local_external_media_id: Some(media_id),
-                    local_bangumi_id: None,
-                    other_id: None,
-                    bangumi_id: None,
-                    recorder: Some(recorder),
-                    date: Some(today),
-                }),
+                Ok(_) => {
+                    if let Ok(Some(recording_id)) = sqlx::query_scalar!(
+                        "SELECT id FROM recordings WHERE user_id = ? AND external_media_id = ? LIMIT 1",
+                        auth_user.user_id,
+                        media_id
+                    )
+                    .fetch_optional(&pool)
+                    .await
+                    {
+                        write_recording_log(
+                            &pool,
+                            recording_id,
+                            Some(auth_user.user_id),
+                            LogTarget::Imdb(media_id),
+                            "recording_created",
+                            None,
+                            None,
+                            None,
+                            Some(json!({ "recorder": recorder, "status": user_status })),
+                        )
+                        .await;
+                    }
+                    Json(AddRecordResponse {
+                        status: 0,
+                        source: Some(IMDB_SOURCE.to_string()),
+                        external_id: Some(imdb_id.clone()),
+                        imdb_id: Some(imdb_id),
+                        local_external_media_id: Some(media_id),
+                        local_bangumi_id: None,
+                        other_id: None,
+                        bangumi_id: None,
+                        recorder: Some(recorder),
+                        date: Some(today),
+                    })
+                }
                 Err(-3) => Json(AddRecordResponse {
                     status: -3,
                     source: Some(IMDB_SOURCE.to_string()),
@@ -517,18 +565,34 @@ pub async fn add_record(
             match save_other_record(&pool, auth_user.user_id, other_id, user_status, &recorder)
                 .await
             {
-                Ok((_recording_id, _)) => Json(AddRecordResponse {
-                    status: 0,
-                    source: Some("custom".to_string()),
-                    external_id: None,
-                    imdb_id: None,
-                    local_external_media_id: None,
-                    local_bangumi_id: None,
-                    other_id: Some(other_id),
-                    bangumi_id: None,
-                    recorder: Some(recorder),
-                    date: Some(today),
-                }),
+                Ok((recording_id, _)) => {
+                    if let Some(recording_id) = recording_id {
+                        write_recording_log(
+                            &pool,
+                            recording_id,
+                            Some(auth_user.user_id),
+                            LogTarget::Other(other_id),
+                            "recording_created",
+                            None,
+                            None,
+                            None,
+                            Some(json!({ "recorder": recorder, "status": user_status })),
+                        )
+                        .await;
+                    }
+                    Json(AddRecordResponse {
+                        status: 0,
+                        source: Some("custom".to_string()),
+                        external_id: None,
+                        imdb_id: None,
+                        local_external_media_id: None,
+                        local_bangumi_id: None,
+                        other_id: Some(other_id),
+                        bangumi_id: None,
+                        recorder: Some(recorder),
+                        date: Some(today),
+                    })
+                }
                 Err(-3) => Json(AddRecordResponse {
                     status: -3,
                     source: Some("custom".to_string()),

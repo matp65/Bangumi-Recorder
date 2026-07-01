@@ -3,9 +3,11 @@ use axum::{
     extract::{Extension, State},
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::{MySql, QueryBuilder, mysql::MySqlPool};
 
 use crate::api::imdb::{IMDB_SOURCE, normalize_imdb_id};
+use crate::api::logs::{LogTarget, write_recording_log};
 use crate::auth_bearer::AuthUser;
 
 #[derive(Deserialize)]
@@ -34,6 +36,14 @@ enum UpdateTarget {
     Bangumi(u32),
     Imdb(u32),
     Other(u32),
+}
+
+fn log_target(target: &UpdateTarget) -> LogTarget {
+    match target {
+        UpdateTarget::Bangumi(id) => LogTarget::Bangumi(*id),
+        UpdateTarget::Imdb(id) => LogTarget::Imdb(*id),
+        UpdateTarget::Other(id) => LogTarget::Other(*id),
+    }
 }
 
 fn has_other_metadata(params: &UpdateRecorderQuery) -> bool {
@@ -69,12 +79,14 @@ async fn resolve_target(
         normalized_imdb_id.is_some(),
         params.other_id.is_some(),
     ]
-        .into_iter()
-        .filter(|v| *v)
-        .count();
+    .into_iter()
+    .filter(|v| *v)
+    .count();
 
     if target_count != 1
-        || (params.recorder.is_none() && params.user_status.is_none() && !has_other_metadata(params))
+        || (params.recorder.is_none()
+            && params.user_status.is_none()
+            && !has_other_metadata(params))
     {
         return Err(UpdateRecorderResponse {
             status: -1,
@@ -189,15 +201,36 @@ pub async fn update_user_recorder(
         }
     };
 
+    let old_recording = match sqlx::query!(
+        "SELECT recorder, status FROM recordings WHERE id = ?",
+        recording
+    )
+    .fetch_one(&pool)
+    .await
+    {
+        Ok(row) => row,
+        Err(e) => {
+            log::error!("Failed to query recording state: {}", e);
+            return Json(UpdateRecorderResponse {
+                status: -2,
+                message: Some("Database error".to_string()),
+            });
+        }
+    };
+
     if params.recorder.is_some() || params.user_status.is_some() {
         let mut qb = QueryBuilder::<MySql>::new("UPDATE recordings SET ");
         {
             let mut separated = qb.separated(", ");
             if let Some(recorder) = params.recorder.as_ref() {
-                separated.push("recorder = ").push_bind(recorder);
+                separated
+                    .push("recorder = ")
+                    .push_bind_unseparated(recorder);
             }
             if let Some(status_val) = params.user_status {
-                separated.push("status = ").push_bind(status_val);
+                separated
+                    .push("status = ")
+                    .push_bind_unseparated(status_val);
             }
             separated.push("updated_at = CURRENT_TIMESTAMP");
         }
@@ -215,6 +248,23 @@ pub async fn update_user_recorder(
     if let UpdateTarget::Other(other_id) = &target
         && has_other_metadata(&params)
     {
+        let old_other = match sqlx::query!(
+            "SELECT name, description, cover_url, max_number, status FROM other_recorders WHERE id = ?",
+            other_id
+        )
+        .fetch_optional(&pool)
+        .await
+        {
+            Ok(row) => row,
+            Err(e) => {
+                log::error!("Failed to query custom item state: {}", e);
+                return Json(UpdateRecorderResponse {
+                    status: -2,
+                    message: Some("Database error".to_string()),
+                });
+            }
+        };
+
         let owner = sqlx::query_scalar!(
             "SELECT add_user FROM other_recorders WHERE id = ?",
             other_id
@@ -249,19 +299,23 @@ pub async fn update_user_recorder(
         {
             let mut separated = qb.separated(", ");
             if let Some(title) = params.other_title.as_ref() {
-                separated.push("name = ").push_bind(title);
+                separated.push("name = ").push_bind_unseparated(title);
             }
             if let Some(description) = params.other_description.as_ref() {
-                separated.push("description = ").push_bind(description);
+                separated
+                    .push("description = ")
+                    .push_bind_unseparated(description);
             }
             if let Some(cover) = params.other_cover.as_ref() {
-                separated.push("cover_url = ").push_bind(cover);
+                separated.push("cover_url = ").push_bind_unseparated(cover);
             }
             if let Some(max_number) = params.other_max_number {
-                separated.push("max_number = ").push_bind(max_number);
+                separated
+                    .push("max_number = ")
+                    .push_bind_unseparated(max_number);
             }
             if let Some(status) = params.other_status {
-                separated.push("status = ").push_bind(status);
+                separated.push("status = ").push_bind_unseparated(status);
             }
         }
         qb.push(" WHERE id = ").push_bind(other_id);
@@ -273,20 +327,85 @@ pub async fn update_user_recorder(
                 message: Some("Database error".to_string()),
             });
         }
+
+        if let Some(old_other) = old_other {
+            let mut changes = Vec::new();
+            if let Some(title) = params.other_title.as_ref()
+                && old_other.name.as_deref() != Some(title.as_str())
+            {
+                changes.push(json!({ "field": "name", "old": old_other.name, "new": title }));
+            }
+            if let Some(description) = params.other_description.as_ref()
+                && old_other.description.as_deref() != Some(description.as_str())
+            {
+                changes.push(json!({ "field": "description", "old": old_other.description, "new": description }));
+            }
+            if let Some(cover) = params.other_cover.as_ref()
+                && old_other.cover_url.as_deref() != Some(cover.as_str())
+            {
+                changes.push(
+                    json!({ "field": "cover_url", "old": old_other.cover_url, "new": cover }),
+                );
+            }
+            if let Some(max_number) = params.other_max_number
+                && old_other.max_number != Some(max_number)
+            {
+                changes.push(json!({ "field": "max_number", "old": old_other.max_number, "new": max_number }));
+            }
+            if let Some(status) = params.other_status
+                && old_other.status != Some(status as i8)
+            {
+                changes.push(json!({ "field": "status", "old": old_other.status, "new": status }));
+            }
+            if !changes.is_empty() {
+                write_recording_log(
+                    &pool,
+                    recording,
+                    Some(auth_user.user_id),
+                    log_target(&target),
+                    "other_metadata_changed",
+                    None,
+                    None,
+                    None,
+                    Some(json!({ "changes": changes })),
+                )
+                .await;
+            }
+        }
     }
 
-    if let (UpdateTarget::Bangumi(local_id), Some(recorder)) = (&target, params.recorder.as_ref())
-        && let Err(e) = sqlx::query!(
-            "INSERT INTO recording_logs (recording_id, user_id, bangumi_id, recorder) VALUES (?, ?, ?, ?)",
-            recording,
-            auth_user.user_id,
-            local_id,
-            recorder
-        )
-        .execute(&pool)
-        .await
+    if let Some(recorder) = params.recorder.as_ref()
+        && old_recording.recorder.as_deref() != Some(recorder.as_str())
     {
-        log::warn!("Failed to write recording log: {:?}", e);
+        write_recording_log(
+            &pool,
+            recording,
+            Some(auth_user.user_id),
+            log_target(&target),
+            "recorder_changed",
+            Some("recorder"),
+            old_recording.recorder.map(|v| json!(v)),
+            Some(json!(recorder)),
+            None,
+        )
+        .await
+    }
+
+    if let Some(user_status) = params.user_status
+        && old_recording.status != user_status as i8
+    {
+        write_recording_log(
+            &pool,
+            recording,
+            Some(auth_user.user_id),
+            log_target(&target),
+            "status_changed",
+            Some("status"),
+            Some(json!(old_recording.status)),
+            Some(json!(user_status)),
+            None,
+        )
+        .await
     }
 
     Json(UpdateRecorderResponse {

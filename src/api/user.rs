@@ -5,7 +5,7 @@ use axum::{
 };
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
-use sqlx::mysql::MySqlPool;
+use sqlx::{Row, mysql::MySqlPool};
 
 #[derive(Debug, Serialize)]
 pub struct UserInfo {
@@ -16,6 +16,7 @@ pub struct UserInfo {
     pub email: String,
     pub avatar: String,
     pub status: i8,
+    pub is_admin: bool,
     pub reg_time: Option<NaiveDate>,
 }
 
@@ -43,13 +44,25 @@ pub async fn get_info(
 ) -> Json<UserInfo> {
     let user_id = auth_user.user_id;
 
-    let user_info = sqlx::query_as!(
-        UserInfo,
-        "SELECT id, uuid, username, nickname, email, avatar, status, DATE(created_at) AS reg_time FROM users WHERE id = ?",
-        user_id
+    let user_info = sqlx::query(
+        "SELECT id, uuid, username, nickname, email, avatar, status, is_admin, DATE(created_at) AS reg_time FROM users WHERE id = ?",
     )
+    .bind(user_id)
     .fetch_one(&pool)
-    .await;
+    .await
+    .map(|row| UserInfo {
+        id: row.try_get::<u32, _>("id").map(|id| id as i64).unwrap_or(0),
+        uuid: row.try_get("uuid").unwrap_or_default(),
+        username: row.try_get("username").unwrap_or_default(),
+        nickname: row.try_get("nickname").unwrap_or_default(),
+        email: row.try_get("email").unwrap_or_default(),
+        avatar: row.try_get("avatar").unwrap_or_default(),
+        status: row.try_get("status").unwrap_or(0),
+        is_admin: row
+            .try_get::<i8, _>("is_admin")
+            .is_ok_and(|value| value != 0),
+        reg_time: row.try_get("reg_time").ok(),
+    });
 
     match user_info {
         Ok(info) => Json(info),
@@ -61,6 +74,7 @@ pub async fn get_info(
             email: String::new(),
             avatar: String::new(),
             status: 0,
+            is_admin: false,
             reg_time: None,
         }),
     }

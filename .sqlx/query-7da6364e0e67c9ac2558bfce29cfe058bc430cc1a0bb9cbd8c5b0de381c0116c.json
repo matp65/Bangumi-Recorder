@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "SELECT id, name, description, cover_url FROM other_recorders WHERE id = ?",
+  "query": "SELECT id, name, description, cover_url FROM other_recorders WHERE id = ? AND add_user IS NULL",
   "describe": {
     "columns": [
       {
@@ -50,5 +50,5 @@
       true
     ]
   },
-  "hash": "49a13b4330f33dd70ab8da3ce1349c7b12a783057c6b0e2959d9fdc98d9adb0f"
+  "hash": "7da6364e0e67c9ac2558bfce29cfe058bc430cc1a0bb9cbd8c5b0de381c0116c"
 }

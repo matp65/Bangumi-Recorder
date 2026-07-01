@@ -5,12 +5,14 @@ use axum::{
     response::IntoResponse,
     routing::{get, patch, post, put},
 };
+use chrono::{Days, Local, NaiveTime};
 use clap::Parser;
 use dotenvy::dotenv;
 use http::Method;
 use rust_embed::RustEmbed;
 use serde::Serialize;
 use sqlx::MySqlPool;
+use std::time::Duration;
 use tower_http::cors::CorsLayer;
 
 mod api;
@@ -59,6 +61,16 @@ fn guess_mime(path: &str) -> &'static str {
     }
 }
 
+fn seconds_until_next_midnight() -> u64 {
+    let now = Local::now().naive_local();
+    let next_midnight = now
+        .date()
+        .checked_add_days(Days::new(1))
+        .expect("next day should be representable")
+        .and_time(NaiveTime::MIN);
+    (next_midnight - now).num_seconds().max(1) as u64
+}
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -74,6 +86,20 @@ async fn main() {
     let pool = MySqlPool::connect(&database_url)
         .await
         .expect("Failed to connect to database");
+
+    if let Err(e) = api::logs::cleanup_soft_deleted_records(&pool, None).await {
+        log::warn!("Failed to run startup cleanup: {}", e);
+    }
+
+    let cleanup_pool = pool.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(seconds_until_next_midnight())).await;
+            if let Err(e) = api::logs::cleanup_soft_deleted_records(&cleanup_pool, None).await {
+                log::warn!("Failed to run scheduled cleanup: {}", e);
+            }
+        }
+    });
 
     let listen = format!(
         "{}:{}",
@@ -288,6 +314,12 @@ async fn main() {
         )
         .route("/me/password", put(api::v2::user::update_password))
         .route("/me/token", post(api::v2::user::regenerate_api_token))
+        .route("/logs/recordings", get(api::logs::list_recording_logs))
+        .route("/logs/system", get(api::logs::list_system_logs))
+        .route(
+            "/settings/auto-cleanup",
+            get(api::logs::get_auto_cleanup_setting).put(api::logs::update_auto_cleanup_setting),
+        )
         // API Token management (multi-token)
         .route(
             "/tokens",
@@ -345,6 +377,14 @@ async fn main() {
         .route("/imdb/:id", get(api::v2::open::search::get_imdb))
         .route("/other/:id", get(api::v2::open::search::get_other))
         .route("/search/local", get(api::v2::open::search::search_local))
+        .route(
+            "/logs/recordings",
+            get(api::v2::open::logs::list_recording_logs_open),
+        )
+        .route(
+            "/logs/system",
+            get(api::v2::open::logs::list_system_logs_open),
+        )
         // Episodes (per-user tracking)
         .route(
             "/episodes/:bangumi_id",

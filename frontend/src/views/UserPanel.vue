@@ -16,6 +16,9 @@ const editAvatar = ref('')
 const oldPassword = ref('')
 const newPassword = ref('')
 const changingPassword = ref(false)
+const cleanupEnabled = ref(false)
+const loadingCleanup = ref(false)
+const savingCleanup = ref(false)
 
 // Token management
 const tokens = ref<ApiTokenItem[]>([])
@@ -49,7 +52,7 @@ function hasPerm(perms: number, permValue: number): boolean {
 }
 
 onMounted(async () => {
-  await Promise.all([loadUserInfo(), loadTokens(), loadPermissionLabels()])
+  await Promise.all([loadUserInfo(), loadTokens(), loadPermissionLabels(), loadCleanupSetting()])
 })
 
 async function loadUserInfo() {
@@ -143,6 +146,40 @@ async function handleChangePassword() {
     Message.error('网络请求失败')
   } finally {
     changingPassword.value = false
+  }
+}
+
+async function loadCleanupSetting() {
+  loadingCleanup.value = true
+  try {
+    const res = await api.getAutoCleanupSetting()
+    if (res.status === 0 && res.data) {
+      cleanupEnabled.value = res.data.enabled
+    }
+  } catch {
+    Message.error('获取自动清理设置失败')
+  } finally {
+    loadingCleanup.value = false
+  }
+}
+
+async function updateCleanupSetting(value: boolean | string | number) {
+  const enabled = Boolean(value)
+  savingCleanup.value = true
+  try {
+    const res = await api.updateAutoCleanupSetting(enabled)
+    if (res.status === 0) {
+      cleanupEnabled.value = enabled
+      Message.success(enabled ? '已启用自动清理' : '已关闭自动清理')
+    } else {
+      cleanupEnabled.value = !enabled
+      Message.error(res.message || '更新自动清理设置失败')
+    }
+  } catch {
+    cleanupEnabled.value = !enabled
+    Message.error('更新自动清理设置失败')
+  } finally {
+    savingCleanup.value = false
   }
 }
 
@@ -303,6 +340,19 @@ async function handleCopy(text: string) {
             <a-button type="primary" :loading="changingPassword" @click="handleChangePassword">修改密码</a-button>
           </a-form-item>
         </a-form>
+      </a-card>
+
+      <a-card :bordered="false" style="margin-bottom: 16px">
+        <template #title>记录清理</template>
+        <a-spin :loading="loadingCleanup">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+            <div>
+              <div style="font-weight: 600; color: #1d2129; margin-bottom: 4px">自动删除软删除记录</div>
+              <div style="font-size: 13px; color: #86909c">开启后，已软删除且超过 30 天的追踪记录会在每天 0 点自动物理删除。</div>
+            </div>
+            <a-switch :model-value="cleanupEnabled" :loading="savingCleanup" @change="updateCleanupSetting" />
+          </div>
+        </a-spin>
       </a-card>
     </a-spin>
 

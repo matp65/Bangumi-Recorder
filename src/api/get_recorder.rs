@@ -63,11 +63,7 @@ struct RecordingRow {
     updated_at: NaiveDateTime,
 }
 
-async fn respond_other(
-    pool: &MySqlPool,
-    user_id: i64,
-    other_id: u32,
-) -> Json<GetRecorderResponse> {
+async fn respond_other(pool: &MySqlPool, user_id: i64, other_id: u32) -> Json<GetRecorderResponse> {
     let row = sqlx::query_as!(
         RecordingRow,
         "SELECT bangumi_id, external_media_id, other_id, recorder, status, is_delete, updated_at FROM recordings WHERE user_id = ? AND other_id = ? AND is_delete = 0",

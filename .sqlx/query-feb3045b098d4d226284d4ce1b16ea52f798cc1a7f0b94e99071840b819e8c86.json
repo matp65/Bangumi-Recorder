@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "SELECT COUNT(*) as cnt FROM other_recorders WHERE name LIKE ?",
+  "query": "SELECT COUNT(*) as cnt FROM other_recorders WHERE name LIKE ? AND add_user IS NULL",
   "describe": {
     "columns": [
       {
@@ -20,5 +20,5 @@
       false
     ]
   },
-  "hash": "31178609b8bb24b7eb04aa670b55a07352117161420abb1300fffd204aa82056"
+  "hash": "feb3045b098d4d226284d4ce1b16ea52f798cc1a7f0b94e99071840b819e8c86"
 }

@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Extension, Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -11,6 +11,7 @@ use super::response::{
     ApiResponse, bad_request, internal_error, not_found, success, success_empty,
 };
 use crate::api::api_token::{ALL_COMBINED, PERM_LABELS, hash_token};
+use crate::api::logs::{operation_metadata, write_system_log};
 use crate::auth_bearer::AuthUser;
 
 #[derive(Serialize)]
@@ -72,6 +73,16 @@ pub async fn permission_labels() -> (StatusCode, Json<ApiResponse<PermissionLabe
     })
 }
 
+async fn username_for_log(pool: &MySqlPool, user_id: i64) -> String {
+    sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| format!("user#{}", user_id))
+}
+
 pub async fn list_tokens(
     State(pool): State<MySqlPool>,
     Extension(auth_user): Extension<AuthUser>,
@@ -128,6 +139,7 @@ pub async fn list_tokens(
 pub async fn create_token(
     State(pool): State<MySqlPool>,
     Extension(auth_user): Extension<AuthUser>,
+    headers: HeaderMap,
     Json(payload): Json<CreateTokenRequest>,
 ) -> (StatusCode, Json<ApiResponse<CreateTokenData>>) {
     let name = payload.name.unwrap_or_default();
@@ -157,6 +169,21 @@ pub async fn create_token(
     match result {
         Ok(res) => {
             let id = res.last_insert_id() as i64;
+            let username = username_for_log(&pool, auth_user.user_id).await;
+            write_system_log(
+                &pool,
+                "info",
+                "api_token",
+                "api_token_created",
+                &format!("{} created API Token '{}'", username, name),
+                Some(auth_user.user_id),
+                Some(operation_metadata(
+                    &headers,
+                    "JWT",
+                    serde_json::json!({ "token_id": id, "name": name, "permissions": permissions, "username": username }),
+                )),
+            )
+            .await;
             success(CreateTokenData {
                 id,
                 name,
@@ -175,23 +202,30 @@ pub async fn update_token(
     State(pool): State<MySqlPool>,
     Extension(auth_user): Extension<AuthUser>,
     Path(id): Path<u64>,
+    headers: HeaderMap,
     Json(payload): Json<UpdateTokenRequest>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
     // Verify the token belongs to this user
-    let existing = sqlx::query("SELECT id FROM api_tokens WHERE id = ? AND user_id = ?")
-        .bind(id)
-        .bind(auth_user.user_id)
-        .fetch_optional(&pool)
-        .await;
+    let existing = sqlx::query(
+        "SELECT id, name, permissions, is_active FROM api_tokens WHERE id = ? AND user_id = ?",
+    )
+    .bind(id)
+    .bind(auth_user.user_id)
+    .fetch_optional(&pool)
+    .await;
 
-    match existing {
-        Ok(Some(_)) => {}
+    let existing = match existing {
+        Ok(Some(row)) => row,
         Ok(None) => return not_found("Token not found"),
         Err(e) => {
             log::error!("Failed to find token: {:?}", e);
             return internal_error("Database error");
         }
-    }
+    };
+
+    let old_name: String = existing.try_get("name").unwrap_or_default();
+    let old_permissions: u64 = existing.try_get("permissions").unwrap_or(0);
+    let old_is_active: i8 = existing.try_get("is_active").unwrap_or(0);
 
     if let Some(name) = &payload.name {
         let name = name.trim();
@@ -231,6 +265,35 @@ pub async fn update_token(
         return internal_error("Failed to update token");
     }
 
+    let username = username_for_log(&pool, auth_user.user_id).await;
+    write_system_log(
+        &pool,
+        "info",
+        "api_token",
+        "api_token_updated",
+        &format!("{} updated API Token '{}'", username, old_name),
+        Some(auth_user.user_id),
+        Some(operation_metadata(
+            &headers,
+            "JWT",
+            serde_json::json!({
+                "token_id": id,
+                "old": {
+                    "name": old_name,
+                    "permissions": old_permissions,
+                    "is_active": old_is_active != 0,
+                },
+                "new": {
+                    "name": payload.name,
+                    "permissions": payload.permissions,
+                    "is_active": payload.is_active,
+                },
+                "username": username,
+            }),
+        )),
+    )
+    .await;
+
     success_empty()
 }
 
@@ -238,7 +301,23 @@ pub async fn delete_token(
     State(pool): State<MySqlPool>,
     Extension(auth_user): Extension<AuthUser>,
     Path(id): Path<u64>,
+    headers: HeaderMap,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
+    let existing =
+        sqlx::query("SELECT name, permissions FROM api_tokens WHERE id = ? AND user_id = ?")
+            .bind(id)
+            .bind(auth_user.user_id)
+            .fetch_optional(&pool)
+            .await;
+
+    let existing = match existing {
+        Ok(row) => row,
+        Err(e) => {
+            log::error!("Failed to find token before delete: {:?}", e);
+            return internal_error("Database error");
+        }
+    };
+
     let result = sqlx::query("DELETE FROM api_tokens WHERE id = ? AND user_id = ?")
         .bind(id)
         .bind(auth_user.user_id)
@@ -248,6 +327,30 @@ pub async fn delete_token(
     match result {
         Ok(res) => {
             if res.rows_affected() > 0 {
+                if let Some(row) = existing {
+                    let username = username_for_log(&pool, auth_user.user_id).await;
+                    let name = row.try_get::<String, _>("name").unwrap_or_default();
+                    let permissions = row.try_get::<u64, _>("permissions").unwrap_or(0);
+                    write_system_log(
+                        &pool,
+                        "info",
+                        "api_token",
+                        "api_token_deleted",
+                        &format!("{} deleted API Token '{}'", username, name),
+                        Some(auth_user.user_id),
+                        Some(operation_metadata(
+                            &headers,
+                            "JWT",
+                            serde_json::json!({
+                                "token_id": id,
+                                "name": name,
+                                "permissions": permissions,
+                                "username": username,
+                            }),
+                        )),
+                    )
+                    .await;
+                }
                 success_empty()
             } else {
                 not_found("Token not found")
