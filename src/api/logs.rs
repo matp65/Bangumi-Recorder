@@ -41,6 +41,14 @@ pub async fn write_recording_log(
     new_value: Option<Value>,
     metadata: Option<Value>,
 ) {
+    if old_value
+        .as_ref()
+        .zip(new_value.as_ref())
+        .is_some_and(|(old, new)| old == new)
+    {
+        return;
+    }
+
     let (target_type, target_id) = target.parts();
     let old_value = old_value.map(|v| v.to_string());
     let new_value = new_value.map(|v| v.to_string());

@@ -7,10 +7,12 @@ use axum::{
 };
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::QueryBuilder;
 use sqlx::mysql::MySqlPool;
 
 use super::response::{ApiResponse, bad_request, internal_error, success};
+use crate::api::logs::{LogTarget, write_recording_log};
 use crate::api::new::{AddRecordQuery, add_record};
 use crate::auth_bearer::AuthUser;
 
@@ -60,6 +62,13 @@ pub struct SyncResponseData {
 #[derive(Deserialize)]
 pub struct SyncSinceQuery {
     pub since: Option<NaiveDateTime>,
+}
+
+struct ExistingRecordingState {
+    id: u32,
+    recorder: Option<String>,
+    status: i8,
+    updated_at: NaiveDateTime,
 }
 
 fn build_pending_sync_actions(
@@ -192,6 +201,36 @@ async fn do_sync(
         log::error!("tx begin error: {:?}", e);
     })?;
 
+    let mut old_states: HashMap<u32, ExistingRecordingState> = HashMap::new();
+    if !to_write.is_empty() {
+        let mut qb = QueryBuilder::new(
+            "SELECT id, bangumi_id, recorder, status, updated_at FROM recordings WHERE user_id = ",
+        );
+        qb.push_bind(user_id).push(" AND bangumi_id IN (");
+        let mut sep = qb.separated(", ");
+        for (easy_id, _, _, _) in &to_write {
+            sep.push_bind(*easy_id);
+        }
+        sep.push_unseparated(")");
+
+        let rows: Vec<(u32, u32, Option<String>, i8, NaiveDateTime)> = qb
+            .build_query_as()
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(|e| log::error!("existing recording state query error: {:?}", e))?;
+        for (id, easy_id, recorder, status, updated_at) in rows {
+            old_states.insert(
+                easy_id,
+                ExistingRecordingState {
+                    id,
+                    recorder,
+                    status,
+                    updated_at,
+                },
+            );
+        }
+    }
+
     if !to_write.is_empty() {
         let mut qb = QueryBuilder::new(
             "INSERT INTO recordings (user_id, bangumi_id, recorder, status, updated_at, created_at) ",
@@ -207,9 +246,9 @@ async fn do_sync(
         });
         qb.push(
             " ON DUPLICATE KEY UPDATE \
-             recorder = IF(VALUES(updated_at) > updated_at, VALUES(recorder), recorder), \
-             status = IF(VALUES(updated_at) > updated_at, VALUES(status), status), \
-             updated_at = IF(VALUES(updated_at) > updated_at, VALUES(updated_at), updated_at)",
+             recorder = IF(VALUES(updated_at) > updated_at AND NOT (recorder <=> VALUES(recorder) AND status = VALUES(status)), VALUES(recorder), recorder), \
+             status = IF(VALUES(updated_at) > updated_at AND NOT (recorder <=> VALUES(recorder) AND status = VALUES(status)), VALUES(status), status), \
+             updated_at = IF(VALUES(updated_at) > updated_at AND NOT (recorder <=> VALUES(recorder) AND status = VALUES(status)), VALUES(updated_at), updated_at)",
         );
         qb.build().execute(&mut *tx).await.map_err(|e| {
             log::error!("batch upsert error: {:?}", e);
@@ -233,6 +272,43 @@ async fn do_sync(
     tx.commit().await.map_err(|e| {
         log::error!("tx commit error: {:?}", e);
     })?;
+
+    for (easy_id, recorder, status, updated_at) in &to_write {
+        let Some(old) = old_states.get(easy_id) else {
+            continue;
+        };
+        if *updated_at <= old.updated_at {
+            continue;
+        }
+        if old.recorder != *recorder {
+            write_recording_log(
+                pool,
+                old.id,
+                Some(user_id),
+                LogTarget::Bangumi(*easy_id),
+                "recorder_changed",
+                Some("recorder"),
+                old.recorder.as_ref().map(|v| json!(v)),
+                recorder.as_ref().map(|v| json!(v)),
+                Some(json!({ "source": "sync" })),
+            )
+            .await;
+        }
+        if old.status != *status {
+            write_recording_log(
+                pool,
+                old.id,
+                Some(user_id),
+                LogTarget::Bangumi(*easy_id),
+                "status_changed",
+                Some("status"),
+                Some(json!(old.status)),
+                Some(json!(status)),
+                Some(json!({ "source": "sync" })),
+            )
+            .await;
+        }
+    }
 
     let mut records: Vec<SyncResponseRecord> = Vec::with_capacity(server_rows.len());
     let mut deleted: Vec<String> = Vec::new();

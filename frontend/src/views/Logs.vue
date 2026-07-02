@@ -19,6 +19,10 @@ const systemTimeRange = ref<string[]>([])
 const systemCategory = ref('')
 const systemAction = ref('')
 const systemUsername = ref('')
+const selectedRecordingLog = ref<RecordingLogItem | null>(null)
+const selectedSystemLog = ref<SystemLogItem | null>(null)
+const recordingDetailVisible = ref(false)
+const systemDetailVisible = ref(false)
 
 const recordingActionOptions = [
   { label: '进度变更', value: 'recorder_changed' },
@@ -55,6 +59,55 @@ function formatValue(value: unknown): string {
   return JSON.stringify(value)
 }
 
+function formatRawValue(value: unknown): string {
+  if (value === null || value === undefined) return '-'
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return JSON.stringify(value, null, 2)
+}
+
+function compactValue(value: unknown, maxLength = 72): string {
+  const text = formatValue(value)
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
+}
+
+function isEpisodeLog(record: RecordingLogItem): boolean {
+  return record.action === 'episode_created' || record.action === 'episode_updated'
+}
+
+function formatSeconds(seconds: unknown): string {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) return '0:00'
+  const total = Math.floor(seconds)
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${m}:${String(s).padStart(2, '0')}`
+}
+
+function metadataOrdinal(record: RecordingLogItem): unknown {
+  const metadata = record.metadata
+  if (!metadata || typeof metadata !== 'object') return undefined
+  return (metadata as Record<string, any>).ordinal
+}
+
+function formatEpisodeListValue(record: RecordingLogItem, value: unknown): string {
+  const ordinal = metadataOrdinal(record)
+  const prefix = ordinal !== undefined ? `EP ${ordinal}` : 'EP'
+  if (!value || typeof value !== 'object') return `${prefix} · -`
+
+  const episode = value as Record<string, any>
+  const progress = formatSeconds(episode.progress_seconds)
+  const duration = episode.duration_seconds ? `/${formatSeconds(episode.duration_seconds)}` : ''
+  const watched = episode.watched === true ? '已看' : '未看'
+  return `${prefix} · ${progress}${duration} · ${watched}`
+}
+
+function formatRecordingListValue(record: RecordingLogItem, value: unknown): string {
+  if (isEpisodeLog(record)) return formatEpisodeListValue(record, value)
+  return compactValue(value)
+}
+
 function metadataExtra(value: unknown): Record<string, any> {
   if (!value || typeof value !== 'object') return {}
   const metadata = value as Record<string, any>
@@ -79,6 +132,23 @@ function formatSystemMetadata(value: unknown): string {
   }
 
   return parts.length ? parts.join('；') : formatValue(value)
+}
+
+function formatRecordingMetadata(record: RecordingLogItem): string {
+  const value = record.metadata
+  if (!value || typeof value !== 'object') return '-'
+  const metadata = value as Record<string, any>
+  const parts = [
+    metadata.source ? `来源: ${metadata.source}` : '',
+    metadata.ordinal !== undefined ? `第 ${metadata.ordinal} 集` : '',
+    metadata.bangumi_id !== undefined ? `Bangumi: ${metadata.bangumi_id}` : '',
+  ].filter(Boolean)
+
+  if (Array.isArray(metadata.changes)) {
+    parts.push(`变更 ${metadata.changes.length} 项`)
+  }
+
+  return parts.length ? parts.join('；') : compactValue(value)
 }
 
 function actionLabel(action: string): string {
@@ -221,6 +291,16 @@ function resetSystemFilters() {
   loadSystemLogs()
 }
 
+function openRecordingDetail(record: unknown) {
+  selectedRecordingLog.value = record as RecordingLogItem
+  recordingDetailVisible.value = true
+}
+
+function openSystemDetail(record: unknown) {
+  selectedSystemLog.value = record as SystemLogItem
+  systemDetailVisible.value = true
+}
+
 async function refreshLogs() {
   if (activeLogTab.value === 'system' && auth.isAdmin) {
     await loadSystemLogs()
@@ -296,12 +376,25 @@ onMounted(async () => {
             <a-button type="primary" @click="loadRecordingLogs">搜索</a-button>
             <a-button @click="resetRecordingFilters">重置</a-button>
           </div>
-          <a-table :data="recordingLogs" :loading="loadingRecording" :pagination="{ pageSize: 12 }" :bordered="false">
+          <a-table
+            class="log-table"
+            :data="recordingLogs"
+            :loading="loadingRecording"
+            :pagination="{ pageSize: 12 }"
+            :bordered="false"
+            :scroll="{ x: 880 }"
+            @row-click="openRecordingDetail"
+          >
             <template #columns>
+              <a-table-column title="序号" :width="88">
+                <template #cell="{ record }">#{{ record.id }}</template>
+              </a-table-column>
               <a-table-column title="时间" data-index="created_at" :width="170" />
               <a-table-column title="对象" :width="180">
                 <template #cell="{ record }">
-                  <a-tag>{{ targetLabel(record) }}</a-tag>
+                  <a-tooltip :content="targetLabel(record)">
+                    <a-tag class="target-tag">{{ targetLabel(record) }}</a-tag>
+                  </a-tooltip>
                 </template>
               </a-table-column>
               <a-table-column title="动作" :width="150">
@@ -310,17 +403,17 @@ onMounted(async () => {
               <a-table-column title="字段" data-index="field_name" :width="110" />
               <a-table-column title="旧值">
                 <template #cell="{ record }">
-                  <span style="font-family: monospace; font-size: 12px">{{ formatValue(record.old_value) }}</span>
+                  <span class="log-value">{{ formatRecordingListValue(record, record.old_value) }}</span>
                 </template>
               </a-table-column>
               <a-table-column title="新值">
                 <template #cell="{ record }">
-                  <span style="font-family: monospace; font-size: 12px">{{ formatValue(record.new_value) }}</span>
+                  <span class="log-value">{{ formatRecordingListValue(record, record.new_value) }}</span>
                 </template>
               </a-table-column>
-              <a-table-column title="扩展">
+              <a-table-column title="扩展" :width="220">
                 <template #cell="{ record }">
-                  <span style="font-family: monospace; font-size: 12px">{{ formatValue(record.metadata) }}</span>
+                  <span class="log-value">{{ formatRecordingMetadata(record) }}</span>
                 </template>
               </a-table-column>
             </template>
@@ -366,8 +459,19 @@ onMounted(async () => {
             <a-button type="primary" @click="loadSystemLogs">搜索</a-button>
             <a-button @click="resetSystemFilters">重置</a-button>
           </div>
-          <a-table :data="systemLogs" :loading="loadingSystem" :pagination="{ pageSize: 12 }" :bordered="false">
+          <a-table
+            class="log-table"
+            :data="systemLogs"
+            :loading="loadingSystem"
+            :pagination="{ pageSize: 12 }"
+            :bordered="false"
+            :scroll="{ x: 840 }"
+            @row-click="openSystemDetail"
+          >
             <template #columns>
+              <a-table-column title="序号" :width="88">
+                <template #cell="{ record }">#{{ record.id }}</template>
+              </a-table-column>
               <a-table-column title="时间" data-index="created_at" :width="170" />
               <a-table-column title="类型" :width="130">
                 <template #cell="{ record }">
@@ -383,7 +487,7 @@ onMounted(async () => {
               <a-table-column title="说明" data-index="message" />
               <a-table-column title="扩展">
                 <template #cell="{ record }">
-                  <span style="font-size: 12px; line-height: 1.6">{{ formatSystemMetadata(record.metadata) }}</span>
+                  <span class="log-value">{{ compactValue(formatSystemMetadata(record.metadata), 90) }}</span>
                 </template>
               </a-table-column>
             </template>
@@ -391,5 +495,114 @@ onMounted(async () => {
         </a-tab-pane>
       </a-tabs>
     </a-card>
+
+    <a-drawer
+      v-model:visible="recordingDetailVisible"
+      title="记录日志详情"
+      width="min(720px, 100vw)"
+      :footer="false"
+      unmount-on-close
+    >
+      <template v-if="selectedRecordingLog">
+        <a-descriptions :column="1" bordered size="small">
+          <a-descriptions-item label="时间">{{ selectedRecordingLog.created_at }}</a-descriptions-item>
+          <a-descriptions-item label="对象">{{ targetLabel(selectedRecordingLog) }}</a-descriptions-item>
+          <a-descriptions-item label="动作">{{ actionLabel(selectedRecordingLog.action) }}</a-descriptions-item>
+          <a-descriptions-item label="字段">{{ selectedRecordingLog.field_name || '-' }}</a-descriptions-item>
+          <a-descriptions-item label="记录 ID">{{ selectedRecordingLog.recording_id || '-' }}</a-descriptions-item>
+          <a-descriptions-item label="目标">{{ selectedRecordingLog.target_type }} #{{ selectedRecordingLog.target_id || '-' }}</a-descriptions-item>
+        </a-descriptions>
+        <div class="detail-block">
+          <div class="detail-title">旧值</div>
+          <pre>{{ formatRawValue(selectedRecordingLog.old_value) }}</pre>
+        </div>
+        <div class="detail-block">
+          <div class="detail-title">新值</div>
+          <pre>{{ formatRawValue(selectedRecordingLog.new_value) }}</pre>
+        </div>
+        <div class="detail-block">
+          <div class="detail-title">扩展原始数据</div>
+          <pre>{{ formatRawValue(selectedRecordingLog.metadata) }}</pre>
+        </div>
+      </template>
+    </a-drawer>
+
+    <a-drawer
+      v-model:visible="systemDetailVisible"
+      title="系统日志详情"
+      width="min(720px, 100vw)"
+      :footer="false"
+      unmount-on-close
+    >
+      <template v-if="selectedSystemLog">
+        <a-descriptions :column="1" bordered size="small">
+          <a-descriptions-item label="时间">{{ selectedSystemLog.created_at }}</a-descriptions-item>
+          <a-descriptions-item label="类型">{{ selectedSystemLog.category }}</a-descriptions-item>
+          <a-descriptions-item label="动作">{{ actionLabel(selectedSystemLog.action) }}</a-descriptions-item>
+          <a-descriptions-item label="用户">{{ selectedSystemLog.username || (selectedSystemLog.user_id ? `user#${selectedSystemLog.user_id}` : '-') }}</a-descriptions-item>
+          <a-descriptions-item label="说明">{{ selectedSystemLog.message }}</a-descriptions-item>
+        </a-descriptions>
+        <div class="detail-block">
+          <div class="detail-title">扩展原始数据</div>
+          <pre>{{ formatRawValue(selectedSystemLog.metadata) }}</pre>
+        </div>
+      </template>
+    </a-drawer>
   </div>
 </template>
+
+<style scoped>
+.log-table :deep(.arco-table-tr) {
+  cursor: pointer;
+}
+
+.log-value {
+  display: inline-block;
+  max-width: 100%;
+  color: #4e5969;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.target-tag {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.detail-block {
+  margin-top: 16px;
+}
+
+.detail-title {
+  margin-bottom: 8px;
+  color: #1d2129;
+  font-weight: 600;
+}
+
+.detail-block pre {
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f7f8fa;
+  color: #1d2129;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 640px) {
+  .log-value {
+    max-width: 220px;
+  }
+}
+</style>
