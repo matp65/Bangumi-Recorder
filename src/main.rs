@@ -306,6 +306,7 @@ async fn main() {
         )
         // Sync
         .route("/sync", post(api::v2::sync::sync_records))
+        .route("/sync_ani", post(api::v2::sync_ani::sync_records))
         .route("/sync/incremental", get(api::v2::sync::incremental_sync))
         // User profile
         .route(
@@ -399,6 +400,7 @@ async fn main() {
             "/sync",
             post(api::v2::open::sync::sync_records).get(api::v2::open::sync::incremental_sync),
         )
+        .route("/sync_ani", post(api::v2::open::sync::sync_ani_records))
         .with_state(pool.clone());
 
     let v2_auth_router = Router::new()

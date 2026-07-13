@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: Bangumi Recorder API
-  version: "2.0.0"
+  version: "2.1.0"
   description: |
     自托管的番剧追番记录器 API v2。
 
@@ -948,10 +948,13 @@ paths:
     get:
       summary: 在线搜索（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
         - name: q
           in: query
@@ -972,6 +975,8 @@ paths:
     get:
       summary: 获取条目详情（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: id
           in: path
@@ -982,7 +987,8 @@ paths:
           schema: { type: boolean }
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
       responses:
         "200":
@@ -996,10 +1002,13 @@ paths:
     get:
       summary: 在线搜索 IMDb（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
         - name: q
           in: query
@@ -1023,6 +1032,8 @@ paths:
     get:
       summary: 获取 IMDb 详情（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: id
           in: path
@@ -1036,7 +1047,8 @@ paths:
           schema: { type: boolean, default: false }
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
       responses:
         "200":
@@ -1046,14 +1058,73 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiResponse"
 
+  /api/v2/open/other/{id}:
+    get:
+      summary: 获取自定义条目详情（API Token 鉴权）
+      tags: [开放接口]
+      security:
+        - BearerApiToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: token
+          in: query
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
+          schema: { type: string }
+      responses:
+        "200":
+          description: 自定义条目详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/v2/open/search/local:
+    get:
+      summary: 搜索本地缓存（API Token 鉴权）
+      tags: [开放接口]
+      security:
+        - BearerApiToken: []
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: id
+          in: query
+          schema: { type: integer }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: token
+          in: query
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
+          schema: { type: string }
+      responses:
+        "200":
+          description: 本地搜索结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
   /api/v2/open/records:
     get:
       summary: 列出追番记录（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
       responses:
         "200":
@@ -1065,10 +1136,13 @@ paths:
     post:
       summary: 添加追番记录（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
       requestBody:
         content:
@@ -1079,10 +1153,32 @@ paths:
         "200":
           description: 添加成功
 
+  /api/v2/open/records/detail:
+    get:
+      summary: 列出所有追番记录及条目详情（API Token 鉴权）
+      tags: [开放接口]
+      security:
+        - BearerApiToken: []
+      parameters:
+        - name: token
+          in: query
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
+          schema: { type: string }
+      responses:
+        "200":
+          description: 详细追番列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
   /api/v2/open/records/bangumi/{id}:
     get:
       summary: 获取进度（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: id
           in: path
@@ -1090,7 +1186,8 @@ paths:
           schema: { type: integer }
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
       responses:
         "200":
@@ -1098,6 +1195,8 @@ paths:
     patch:
       summary: 更新进度（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: id
           in: path
@@ -1105,7 +1204,8 @@ paths:
           schema: { type: integer }
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
       requestBody:
         content:
@@ -1120,6 +1220,8 @@ paths:
     delete:
       summary: 删除记录（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: id
           in: path
@@ -1127,7 +1229,8 @@ paths:
           schema: { type: integer }
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
         - name: hard_delete
           in: query
@@ -1139,6 +1242,8 @@ paths:
     get:
       summary: 获取 IMDb 进度（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: id
           in: path
@@ -1146,7 +1251,8 @@ paths:
           schema: { type: string, example: tt0816692 }
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
       responses:
         "200":
@@ -1154,6 +1260,8 @@ paths:
     patch:
       summary: 更新 IMDb 进度（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: id
           in: path
@@ -1161,7 +1269,8 @@ paths:
           schema: { type: string, example: tt0816692 }
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
       requestBody:
         content:
@@ -1176,6 +1285,8 @@ paths:
     delete:
       summary: 删除 IMDb 记录（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: id
           in: path
@@ -1183,7 +1294,72 @@ paths:
           schema: { type: string, example: tt0816692 }
         - name: token
           in: query
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
+          schema: { type: string }
+        - name: hard_delete
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200": { description: 删除成功 }
+
+  /api/v2/open/records/custom/{id}:
+    get:
+      summary: 获取自定义条目进度（API Token 鉴权）
+      tags: [开放接口]
+      security:
+        - BearerApiToken: []
+      parameters:
+        - name: id
+          in: path
           required: true
+          schema: { type: integer }
+        - name: token
+          in: query
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
+          schema: { type: string }
+      responses:
+        "200": { description: 自定义条目追踪进度 }
+    patch:
+      summary: 更新自定义条目进度（API Token 鉴权）
+      tags: [开放接口]
+      security:
+        - BearerApiToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: token
+          in: query
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recorder: { type: string }
+                user_status: { type: integer }
+      responses:
+        "200": { description: 更新成功 }
+    delete:
+      summary: 删除自定义条目记录（API Token 鉴权）
+      tags: [开放接口]
+      security:
+        - BearerApiToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: token
+          in: query
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
         - name: hard_delete
           in: query
@@ -1195,14 +1371,97 @@ paths:
     get:
       summary: 用户信息（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
       responses:
         "200":
           description: 用户信息
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/v2/open/logs/recordings:
+    get:
+      summary: 查看当前用户的追踪记录日志（API Token 鉴权）
+      description: 返回可用于审计、导出和年度总结的永久记录事件流。
+      tags: [开放接口]
+      security:
+        - BearerApiToken: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1, minimum: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50, minimum: 1, maximum: 100 }
+        - name: start_time
+          in: query
+          schema: { type: string, format: date-time }
+        - name: end_time
+          in: query
+          schema: { type: string, format: date-time }
+        - name: target
+          in: query
+          schema: { type: string }
+        - name: action
+          in: query
+          schema: { type: string }
+        - name: token
+          in: query
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
+          schema: { type: string }
+      responses:
+        "200":
+          description: 当前用户的追踪记录日志
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/v2/open/logs/system:
+    get:
+      summary: 查看系统审计日志（API Token 鉴权）
+      tags: [开放接口]
+      security:
+        - BearerApiToken: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1, minimum: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50, minimum: 1, maximum: 100 }
+        - name: start_time
+          in: query
+          schema: { type: string, format: date-time }
+        - name: end_time
+          in: query
+          schema: { type: string, format: date-time }
+        - name: action
+          in: query
+          schema: { type: string }
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: username
+          in: query
+          schema: { type: string }
+        - name: token
+          in: query
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
+          schema: { type: string }
+      responses:
+        "200":
+          description: 系统审计日志
           content:
             application/json:
               schema:
@@ -1213,6 +1472,8 @@ paths:
     get:
       summary: 获取剧集元数据列表（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: id
           in: path
@@ -1224,7 +1485,8 @@ paths:
           description: 强制从 bgm.tv 重新爬取
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
       responses:
         "200":
@@ -1239,6 +1501,8 @@ paths:
     get:
       summary: 获取单集追踪列表（API Token 鉴权，支持 ?force=true 强制刷新缓存）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: bangumi_id
           in: path
@@ -1250,7 +1514,8 @@ paths:
           description: 强制从 bgm.tv 重新爬取剧集元数据
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
       responses:
         "200":
@@ -1264,6 +1529,8 @@ paths:
     patch:
       summary: 更新单集进度（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: bangumi_id
           in: path
@@ -1275,7 +1542,8 @@ paths:
           schema: { type: integer }
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
       requestBody:
         required: true
@@ -1300,10 +1568,13 @@ paths:
     post:
       summary: 批量同步（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
       requestBody:
         required: true
@@ -1329,6 +1600,8 @@ paths:
     get:
       summary: 增量同步（API Token 鉴权）
       tags: [开放接口]
+      security:
+        - BearerApiToken: []
       parameters:
         - name: since
           in: query
@@ -1336,7 +1609,8 @@ paths:
           schema: { type: string, format: date-time }
         - name: token
           in: query
-          required: true
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
           schema: { type: string }
       responses:
         "200":
@@ -1348,6 +1622,67 @@ paths:
         "400":
           description: 缺少参数
 
+  /api/v2/sync_ani:
+    post:
+      summary: 游标式记录与单集双向同步（JWT）
+      tags: [同步]
+      security:
+        - BearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncAniRequest"
+      responses:
+        "200":
+          description: 权威合并结果和下一游标
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/SyncAniResponse"
+
+  /api/v2/open/sync_ani:
+    post:
+      summary: 游标式记录与单集双向同步（API Token）
+      description: |
+        Animeko 使用的同步接口。API Token 应通过 Authorization Header 传输；
+        token 查询参数仅保留用于旧客户端兼容；
+        等时间戳冲突固定由服务端获胜。响应游标来自永久 change stream，软删除记录
+        被物理清理后仍会返回删除墓碑。
+      tags: [开放接口]
+      security:
+        - BearerApiToken: []
+      parameters:
+        - name: token
+          in: query
+          required: false
+          description: "旧客户端兼容参数；推荐使用 Authorization: Bearer <api-token>。"
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncAniRequest"
+      responses:
+        "200":
+          description: 权威合并结果和下一游标
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/SyncAniResponse"
+        "401": { description: API Token 无效或已吊销 }
+        "403": { description: API Token 权限不足 }
+
 components:
   securitySchemes:
     BearerJWT:
@@ -1355,6 +1690,11 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: 在 /api/v2/auth/login 获取 Token，以 `Bearer <token>` 形式传入 Authorization 头。
+    BearerApiToken:
+      type: http
+      scheme: bearer
+      bearerFormat: API Token
+      description: 在 /api/v2/tokens 创建 Token，以 `Bearer <api-token>` 形式传入 Authorization 头。旧接口的 token 查询参数仅为兼容保留。
 
   schemas:
     # ── 统一响应 ──
@@ -1607,6 +1947,76 @@ components:
           description: "已在服务端删除的 bangumi_id 列表"
       required: [records, deleted]
 
+    SyncAniEpisodeInput:
+      type: object
+      properties:
+        ordinal: { type: integer, minimum: 1 }
+        watched: { type: boolean }
+        progress_seconds: { type: integer, nullable: true, minimum: 0 }
+        duration_seconds: { type: integer, nullable: true, minimum: 0 }
+        completed_at: { type: string, nullable: true, format: date-time }
+        updated_at: { type: string, format: date-time, description: "UTC，支持微秒" }
+      required: [ordinal, watched, updated_at]
+
+    SyncAniRecordInput:
+      type: object
+      properties:
+        bangumi_id: { type: integer, format: uint32, minimum: 1 }
+        recorder: { type: string, nullable: true }
+        user_status: { type: integer, enum: [0,1,2,3,4] }
+        is_delete: { type: boolean, default: false }
+        updated_at: { type: string, format: date-time, description: "UTC，支持微秒" }
+        episodes:
+          type: array
+          items: { $ref: "#/components/schemas/SyncAniEpisodeInput" }
+      required: [bangumi_id, user_status, updated_at]
+
+    SyncAniRequest:
+      type: object
+      properties:
+        cursor:
+          type: string
+          nullable: true
+          description: "上次成功响应的 next_cursor；首次同步使用 0。字符串避免 JSON 整数精度损失。"
+        limit: { type: integer, minimum: 1, maximum: 2000, default: 500 }
+        records:
+          type: array
+          maxItems: 10000
+          items: { $ref: "#/components/schemas/SyncAniRecordInput" }
+
+    SyncAniEpisode:
+      allOf:
+        - $ref: "#/components/schemas/SyncAniEpisodeInput"
+        - type: object
+          properties:
+            revision: { type: string, description: "单调递增的服务端 revision" }
+          required: [revision]
+
+    SyncAniRecord:
+      type: object
+      properties:
+        bangumi_id: { type: integer, format: uint32 }
+        recorder: { type: string, nullable: true }
+        user_status: { type: integer, nullable: true, enum: [0,1,2,3,4] }
+        is_delete: { type: boolean }
+        updated_at: { type: string, format: date-time }
+        revision: { type: string, description: "单调递增的服务端 revision" }
+        episodes:
+          type: array
+          items: { $ref: "#/components/schemas/SyncAniEpisode" }
+      required: [bangumi_id, is_delete, updated_at, revision, episodes]
+
+    SyncAniResponse:
+      type: object
+      properties:
+        records:
+          type: array
+          items: { $ref: "#/components/schemas/SyncAniRecord" }
+        server_time: { type: string, format: date-time }
+        next_cursor: { type: string }
+        has_more: { type: boolean }
+      required: [records, server_time, next_cursor, has_more]
+
     AddRecordData:
       type: object
       properties:
@@ -1744,7 +2154,7 @@ components:
     VersionInfo:
       type: object
       properties:
-        version: { type: string, example: "1.0.2" }
+        version: { type: string, example: "1.2.0" }
         rustc: { type: string, example: "rustc 1.93.0 (254b59607 2026-01-19)" }
         git: { type: string, example: "74d103a" }
       required: [version, rustc, git]

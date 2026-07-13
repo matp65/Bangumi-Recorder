@@ -1,4 +1,4 @@
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode, header::AUTHORIZATION};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use sqlx::Row;
@@ -83,6 +83,33 @@ pub fn has_perm(perms: u64, required: &[u64]) -> bool {
         return true;
     }
     required.iter().any(|&f| perms & f != 0)
+}
+
+pub fn has_all_perms(perms: u64, required: &[u64]) -> bool {
+    if perms & PERM_ALL == PERM_ALL
+        || perms & ALL_COMBINED == ALL_COMBINED
+        || perms & LEGACY_ALL_COMBINED == LEGACY_ALL_COMBINED
+    {
+        return true;
+    }
+    required.iter().all(|&permission| perms & permission != 0)
+}
+
+pub fn api_token_from_request<'a>(
+    headers: &'a HeaderMap,
+    query_token: Option<&'a str>,
+) -> Option<&'a str> {
+    headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| {
+            let (scheme, token) = value.split_once(' ')?;
+            scheme
+                .eq_ignore_ascii_case("Bearer")
+                .then_some(token.trim())
+        })
+        .filter(|value| !value.is_empty())
+        .or(query_token)
 }
 
 pub fn hash_token(token: &str) -> String {
@@ -173,6 +200,18 @@ pub async fn require_token_with_perm(
     Ok(info)
 }
 
+pub async fn require_token_with_all_perms(
+    pool: &MySqlPool,
+    token: Option<&str>,
+    required: &[u64],
+) -> Result<TokenInfo, StatusCode> {
+    let info = require_api_token(pool, token).await?;
+    if !has_all_perms(info.permissions, required) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    Ok(info)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,6 +220,15 @@ mod tests {
     fn has_perm_accepts_specific_required_permission() {
         assert!(has_perm(PERM_READ_LOGS, &[PERM_READ_LOGS]));
         assert!(!has_perm(PERM_READ, &[PERM_READ_LOGS]));
+    }
+
+    #[test]
+    fn has_all_perms_requires_every_requested_permission() {
+        assert!(has_all_perms(
+            PERM_READ | PERM_WRITE,
+            &[PERM_READ, PERM_WRITE]
+        ));
+        assert!(!has_all_perms(PERM_READ, &[PERM_READ, PERM_WRITE]));
     }
 
     #[test]
@@ -207,6 +255,41 @@ mod tests {
         assert_eq!(
             hash_token("token"),
             "3c469e9d6c5875d37a43f353d4f88e61fcf812c66eee3457465a40b0da4153e0"
+        );
+    }
+
+    #[test]
+    fn authorization_header_is_preferred_over_legacy_query_token() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, "Bearer header-token".parse().unwrap());
+        assert_eq!(
+            api_token_from_request(&headers, Some("query-token")),
+            Some("header-token")
+        );
+    }
+
+    #[test]
+    fn authorization_scheme_is_case_insensitive() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, "bearer header-token".parse().unwrap());
+        assert_eq!(api_token_from_request(&headers, None), Some("header-token"));
+    }
+
+    #[test]
+    fn legacy_query_token_remains_supported() {
+        assert_eq!(
+            api_token_from_request(&HeaderMap::new(), Some("query-token")),
+            Some("query-token")
+        );
+    }
+
+    #[test]
+    fn invalid_authorization_header_falls_back_to_legacy_query_token() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, "Basic credentials".parse().unwrap());
+        assert_eq!(
+            api_token_from_request(&headers, Some("query-token")),
+            Some("query-token")
         );
     }
 }

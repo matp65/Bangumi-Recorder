@@ -1,6 +1,6 @@
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::Json,
 };
 use serde::Deserialize;
@@ -8,7 +8,8 @@ use serde::Deserialize;
 use sqlx::mysql::MySqlPool;
 
 use super::api_token::{
-    PERM_CHANGE_STATUS, PERM_MODIFY_RECORD, PERM_WRITE, require_token_with_perm,
+    PERM_CHANGE_STATUS, PERM_MODIFY_RECORD, PERM_WRITE, api_token_from_request,
+    require_token_with_perm,
 };
 use crate::auth_bearer::AuthUser;
 
@@ -33,11 +34,13 @@ pub struct UpdateRecorderQuery {
 
 pub async fn update_user_recorder(
     State(pool): State<MySqlPool>,
+    headers: HeaderMap,
     Query(params): Query<UpdateRecorderQuery>,
 ) -> Result<Json<UpdateRecorderResponse>, StatusCode> {
+    let token = api_token_from_request(&headers, params.token.as_deref());
     let token_info = require_token_with_perm(
         &pool,
-        params.token.as_deref(),
+        token,
         &[PERM_MODIFY_RECORD, PERM_WRITE, PERM_CHANGE_STATUS],
     )
     .await?;

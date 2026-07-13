@@ -36,7 +36,7 @@
         "type_info": {
           "type": "Datetime",
           "flags": "BINARY",
-          "max_size": 19
+          "max_size": 26
         }
       }
     ],

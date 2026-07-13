@@ -52,14 +52,17 @@ fn main() {
         // Always re-run if anything in frontend/ changes
         println!("cargo:rerun-if-changed=frontend/");
 
-        // Ensure node_modules exist
-        if !frontend.join("node_modules").exists() {
+        // Ensure build-time dependencies exist. Some environments default to
+        // omitting dev dependencies, but Next.js type-checking needs them.
+        if !frontend.join("node_modules/.bin/next").exists()
+            || !frontend.join("node_modules/.bin/tsc").exists()
+        {
             let status = Command::new("npm")
-                .args(["install"])
+                .args(["ci", "--include=dev"])
                 .current_dir(frontend)
                 .status()
-                .expect("npm install failed — is Node.js installed?");
-            assert!(status.success(), "npm install failed");
+                .expect("npm ci failed — is Node.js installed?");
+            assert!(status.success(), "npm ci failed");
         }
 
         let status = Command::new("npm")

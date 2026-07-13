@@ -45,7 +45,7 @@
         "type_info": {
           "type": "Datetime",
           "flags": "BINARY",
-          "max_size": 19
+          "max_size": 26
         }
       },
       {
@@ -54,7 +54,7 @@
         "type_info": {
           "type": "Datetime",
           "flags": "NOT_NULL | BINARY | ON_UPDATE_NOW",
-          "max_size": 19
+          "max_size": 26
         }
       }
     ],

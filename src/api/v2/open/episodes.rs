@@ -1,12 +1,14 @@
 use axum::{
     Json,
     extract::{Extension, Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use serde::Serialize;
 use sqlx::mysql::MySqlPool;
 
-use crate::api::open::api_token::{PERM_READ, PERM_WRITE, require_token_with_perm};
+use crate::api::open::api_token::{
+    PERM_READ, PERM_WRITE, api_token_from_request, require_token_with_perm,
+};
 use crate::api::v2::episodes::{EpisodeItem, ForceEpisodesQuery, UpdateEpisodeBody};
 use crate::api::v2::response::{ApiResponse, unauthorized};
 use crate::auth_bearer::AuthUser;
@@ -30,10 +32,11 @@ fn forbidden<T: Serialize>(msg: &str) -> (StatusCode, Json<ApiResponse<T>>) {
 
 pub async fn list_episodes(
     State(pool): State<MySqlPool>,
+    headers: HeaderMap,
     Path(bangumi_id): Path<u32>,
     Query(query): Query<OpenTokenQuery>,
 ) -> (StatusCode, Json<ApiResponse<Vec<EpisodeItem>>>) {
-    let token = match query.token.as_deref() {
+    let token = match api_token_from_request(&headers, query.token.as_deref()) {
         Some(t) => t,
         None => return unauthorized("Missing API token"),
     };
@@ -58,11 +61,12 @@ pub async fn list_episodes(
 
 pub async fn update_episode(
     State(pool): State<MySqlPool>,
+    headers: HeaderMap,
     Path((bangumi_id, ordinal)): Path<(u32, i32)>,
     Query(query): Query<OpenTokenQuery>,
     Json(body): Json<UpdateEpisodeBody>,
 ) -> (StatusCode, Json<ApiResponse<EpisodeItem>>) {
-    let token = match query.token.as_deref() {
+    let token = match api_token_from_request(&headers, query.token.as_deref()) {
         Some(t) => t,
         None => return unauthorized("Missing API token"),
     };

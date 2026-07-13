@@ -1,12 +1,14 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
 
-use crate::api::open::api_token::{PERM_READ, PERM_WRITE, require_token_with_perm};
+use crate::api::open::api_token::{
+    PERM_READ, PERM_WRITE, api_token_from_request, require_token_with_perm,
+};
 use crate::api::v2::response::{
     ApiResponse, forbidden as v2_forbidden, unauthorized as v2_unauthorized,
 };
@@ -72,12 +74,18 @@ async fn verify_token<T: Serialize>(
 /// GET /api/v2/open/search?q=keyword&page=1&force=true&token=xxx
 pub async fn search_bangumi(
     State(pool): State<MySqlPool>,
+    headers: HeaderMap,
     Query(params): Query<SearchQuery>,
 ) -> (
     StatusCode,
     Json<ApiResponse<Vec<crate::api::search::BangumiSearchItem>>>,
 ) {
-    if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
+    if let Err(e) = verify_token(
+        &pool,
+        api_token_from_request(&headers, params.token.as_deref()),
+    )
+    .await
+    {
         return e;
     }
 
@@ -94,12 +102,18 @@ pub async fn search_bangumi(
 /// GET /api/v2/open/imdb/search?q=keyword&page=1&use_api=false&token=xxx
 pub async fn search_imdb(
     State(pool): State<MySqlPool>,
+    headers: HeaderMap,
     Query(params): Query<ImdbSearchQuery>,
 ) -> (
     StatusCode,
     Json<ApiResponse<Vec<crate::api::imdb::ImdbSearchItem>>>,
 ) {
-    if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
+    if let Err(e) = verify_token(
+        &pool,
+        api_token_from_request(&headers, params.token.as_deref()),
+    )
+    .await
+    {
         return e;
     }
 
@@ -118,9 +132,15 @@ pub async fn search_imdb(
 pub async fn get_imdb(
     State(pool): State<MySqlPool>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Query(params): Query<ImdbQuery>,
 ) -> (StatusCode, Json<ApiResponse<crate::api::imdb::ImdbItem>>) {
-    if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
+    if let Err(e) = verify_token(
+        &pool,
+        api_token_from_request(&headers, params.token.as_deref()),
+    )
+    .await
+    {
         return e;
     }
 
@@ -139,9 +159,15 @@ pub async fn get_imdb(
 pub async fn get_other(
     State(pool): State<MySqlPool>,
     Path(id): Path<u32>,
+    headers: HeaderMap,
     Query(params): Query<BangumiQuery>,
 ) -> (StatusCode, Json<ApiResponse<crate::api::search::OtherItem>>) {
-    if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
+    if let Err(e) = verify_token(
+        &pool,
+        api_token_from_request(&headers, params.token.as_deref()),
+    )
+    .await
+    {
         return e;
     }
 
@@ -152,9 +178,15 @@ pub async fn get_other(
 pub async fn get_bangumi(
     State(pool): State<MySqlPool>,
     Path(id): Path<u32>,
+    headers: HeaderMap,
     Query(params): Query<BangumiQuery>,
 ) -> (StatusCode, Json<ApiResponse<BangumiItem>>) {
-    if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
+    if let Err(e) = verify_token(
+        &pool,
+        api_token_from_request(&headers, params.token.as_deref()),
+    )
+    .await
+    {
         return e;
     }
 
@@ -178,9 +210,15 @@ pub struct EpisodeListQuery {
 pub async fn get_bangumi_episodes(
     State(pool): State<MySqlPool>,
     Path(id): Path<u32>,
+    headers: HeaderMap,
     Query(params): Query<EpisodeListQuery>,
 ) -> (StatusCode, Json<ApiResponse<Vec<BangumiEpisodeMeta>>>) {
-    if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
+    if let Err(e) = verify_token(
+        &pool,
+        api_token_from_request(&headers, params.token.as_deref()),
+    )
+    .await
+    {
         return e;
     }
 
@@ -197,9 +235,15 @@ pub async fn get_bangumi_episodes(
 /// GET /api/v2/open/search/local?q=keyword&token=xxx
 pub async fn search_local(
     State(pool): State<MySqlPool>,
+    headers: HeaderMap,
     Query(params): Query<LocalSearchParams>,
 ) -> (StatusCode, Json<ApiResponse<LocalSearchResult>>) {
-    if let Err(e) = verify_token(&pool, params.token.as_deref()).await {
+    if let Err(e) = verify_token(
+        &pool,
+        api_token_from_request(&headers, params.token.as_deref()),
+    )
+    .await
+    {
         return e;
     }
 

@@ -5,5 +5,6 @@ pub mod record;
 pub mod response;
 pub mod search;
 pub mod sync;
+pub mod sync_ani;
 pub mod token;
 pub mod user;

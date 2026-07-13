@@ -1,21 +1,24 @@
 use axum::{
     Json,
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use sqlx::Row;
 use sqlx::mysql::MySqlPool;
 
-use crate::api::open::api_token::{PERM_VIEW_INFO, require_token_with_perm};
+use crate::api::open::api_token::{
+    PERM_VIEW_INFO, api_token_from_request, require_token_with_perm,
+};
 use crate::api::open::user::GetTokenQuery;
 use crate::api::user::UserInfo;
 use crate::api::v2::response::{ApiResponse, forbidden, success, unauthorized};
 
 pub async fn get_info(
     State(pool): State<MySqlPool>,
+    headers: HeaderMap,
     Query(params): Query<GetTokenQuery>,
 ) -> (StatusCode, Json<ApiResponse<UserInfo>>) {
-    let token = match params.token.as_ref() {
+    let token = match api_token_from_request(&headers, params.token.as_deref()) {
         Some(token) => token,
         None => return unauthorized("Missing API token"),
     };

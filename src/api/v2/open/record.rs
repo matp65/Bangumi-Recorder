@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPool;
@@ -42,13 +42,10 @@ fn handle_v1_err<T: Serialize>(e: StatusCode) -> (StatusCode, Json<ApiResponse<T
 
 pub async fn add_record(
     State(pool): State<MySqlPool>,
+    headers: HeaderMap,
     query: Query<AddRecordQuery>,
 ) -> (StatusCode, Json<ApiResponse<AddRecordData>>) {
-    if query.token.is_none() {
-        return unauthorized("Missing API token");
-    }
-
-    match v1_add_record_open(State(pool.clone()), query).await {
+    match v1_add_record_open(State(pool.clone()), headers, query).await {
         Ok(json_resp) => {
             let inner = json_resp.0;
             match inner.status {
@@ -85,13 +82,10 @@ fn conflict<T: Serialize>(msg: &str) -> (StatusCode, Json<ApiResponse<T>>) {
 
 pub async fn list_recorder(
     State(pool): State<MySqlPool>,
+    headers: HeaderMap,
     query: Query<ListRecorderQuery>,
 ) -> (StatusCode, Json<ApiResponse<Vec<OpenRecorderItem>>>) {
-    if query.token.is_none() {
-        return unauthorized("Missing API token");
-    }
-
-    match v1_list_recorder(State(pool.clone()), query).await {
+    match v1_list_recorder(State(pool.clone()), headers, query).await {
         Ok(json_resp) => {
             let inner = json_resp.0;
             if inner.status == 0 {
@@ -106,13 +100,10 @@ pub async fn list_recorder(
 
 pub async fn get_detail_list(
     State(pool): State<MySqlPool>,
+    headers: HeaderMap,
     query: Query<DetailListQuery>,
 ) -> (StatusCode, Json<ApiResponse<Vec<OpenDetailListItem>>>) {
-    if query.token.is_none() {
-        return unauthorized("Missing API token");
-    }
-
-    match v1_get_detail_list(State(pool.clone()), query).await {
+    match v1_get_detail_list(State(pool.clone()), headers, query).await {
         Ok(json_resp) => {
             let inner = json_resp.0;
             if inner.status == 0 {
@@ -130,15 +121,12 @@ pub async fn get_detail_list(
 pub async fn get_record_by_bangumi(
     State(pool): State<MySqlPool>,
     Path(id): Path<u32>,
+    headers: HeaderMap,
     Query(token_q): Query<OpenTokenQuery>,
 ) -> (StatusCode, Json<ApiResponse<GetRecordData>>) {
-    let _token = match token_q.token.as_deref() {
-        Some(t) => t,
-        None => return unauthorized("Missing API token"),
-    };
-
     match v1_get_recorder(
         State(pool.clone()),
+        headers,
         Query(GetRecorderQuery {
             bangumi_id: Some(id),
             imdb_id: None,
@@ -185,11 +173,13 @@ pub struct OpenUpdateBody {
 pub async fn update_record_by_bangumi(
     State(pool): State<MySqlPool>,
     Path(id): Path<u32>,
+    headers: HeaderMap,
     Query(token_q): Query<OpenTokenQuery>,
     Json(body): Json<OpenUpdateBody>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
     match v1_update_recorder(
         State(pool.clone()),
+        headers,
         Query(UpdateRecorderQuery {
             bangumi_id: Some(id as i32),
             source: None,
@@ -230,10 +220,12 @@ pub async fn update_record_by_bangumi(
 pub async fn delete_record_by_bangumi(
     State(pool): State<MySqlPool>,
     Path(id): Path<u32>,
+    headers: HeaderMap,
     Query(token_q): Query<OpenTokenQuery>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
     match v1_delete_recorder(
         State(pool.clone()),
+        headers,
         Query(DeleteRecorderQuery {
             bangumi_id: Some(id),
             source: None,
@@ -268,15 +260,12 @@ pub async fn delete_record_by_bangumi(
 pub async fn get_record_by_imdb(
     State(pool): State<MySqlPool>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Query(token_q): Query<OpenTokenQuery>,
 ) -> (StatusCode, Json<ApiResponse<GetRecordData>>) {
-    let _token = match token_q.token.as_deref() {
-        Some(t) => t,
-        None => return unauthorized("Missing API token"),
-    };
-
     match v1_get_recorder(
         State(pool.clone()),
+        headers,
         Query(GetRecorderQuery {
             bangumi_id: None,
             imdb_id: Some(id),
@@ -317,11 +306,13 @@ pub async fn get_record_by_imdb(
 pub async fn update_record_by_imdb(
     State(pool): State<MySqlPool>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Query(token_q): Query<OpenTokenQuery>,
     Json(body): Json<OpenUpdateBody>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
     match v1_update_recorder(
         State(pool.clone()),
+        headers,
         Query(UpdateRecorderQuery {
             bangumi_id: None,
             source: None,
@@ -362,10 +353,12 @@ pub async fn update_record_by_imdb(
 pub async fn delete_record_by_imdb(
     State(pool): State<MySqlPool>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Query(token_q): Query<OpenTokenQuery>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
     match v1_delete_recorder(
         State(pool.clone()),
+        headers,
         Query(DeleteRecorderQuery {
             bangumi_id: None,
             source: None,
@@ -400,15 +393,12 @@ pub async fn delete_record_by_imdb(
 pub async fn get_record_by_custom(
     State(pool): State<MySqlPool>,
     Path(id): Path<u32>,
+    headers: HeaderMap,
     Query(token_q): Query<OpenTokenQuery>,
 ) -> (StatusCode, Json<ApiResponse<GetRecordData>>) {
-    let _token = match token_q.token.as_deref() {
-        Some(t) => t,
-        None => return unauthorized("Missing API token"),
-    };
-
     match v1_get_recorder(
         State(pool.clone()),
+        headers,
         Query(GetRecorderQuery {
             bangumi_id: None,
             imdb_id: None,
@@ -449,11 +439,13 @@ pub async fn get_record_by_custom(
 pub async fn update_record_by_custom(
     State(pool): State<MySqlPool>,
     Path(id): Path<u32>,
+    headers: HeaderMap,
     Query(token_q): Query<OpenTokenQuery>,
     Json(body): Json<OpenUpdateBody>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
     match v1_update_recorder(
         State(pool.clone()),
+        headers,
         Query(UpdateRecorderQuery {
             bangumi_id: None,
             source: None,
@@ -494,10 +486,12 @@ pub async fn update_record_by_custom(
 pub async fn delete_record_by_custom(
     State(pool): State<MySqlPool>,
     Path(id): Path<u32>,
+    headers: HeaderMap,
     Query(token_q): Query<OpenTokenQuery>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
     match v1_delete_recorder(
         State(pool.clone()),
+        headers,
         Query(DeleteRecorderQuery {
             bangumi_id: None,
             source: None,
