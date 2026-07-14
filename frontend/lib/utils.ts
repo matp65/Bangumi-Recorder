@@ -21,6 +21,7 @@ export function formatDate(value: string | null | undefined, withTime = false) {
 
 export function formatUnknown(value: unknown, pretty = false): string {
   if (value === null || value === undefined) return "—";
-  if (["string", "number", "boolean"].includes(typeof value)) return String(value);
+  if (["string", "number", "boolean"].includes(typeof value))
+    return String(value);
   return JSON.stringify(value, null, pretty ? 2 : undefined);
 }

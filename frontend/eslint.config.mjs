@@ -5,5 +5,12 @@ import nextTypescript from "eslint-config-next/typescript";
 export default defineConfig([
   ...nextVitals,
   ...nextTypescript,
-  globalIgnores(["dist/**", "node_modules/**", "src/**/*.vue", "src/main.ts", "src/router/**", "src/stores/**"]),
+  globalIgnores([
+    "dist/**",
+    "node_modules/**",
+    "src/**/*.vue",
+    "src/main.ts",
+    "src/router/**",
+    "src/stores/**",
+  ]),
 ]);

@@ -9,9 +9,12 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground shadow-[0_1px_0_oklch(0.35_0.2_263/.26)] hover:bg-primary/90",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/75",
-        outline: "border border-border bg-background/70 hover:border-foreground/25 hover:bg-muted",
+        default:
+          "bg-primary text-primary-foreground shadow-[0_1px_0_oklch(0.35_0.2_263/.26)] hover:bg-primary/90",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/75",
+        outline:
+          "border border-border bg-background/70 hover:border-foreground/25 hover:bg-muted",
         ghost: "hover:bg-muted hover:text-foreground",
         destructive: "bg-destructive text-white hover:bg-destructive/90",
         link: "min-h-0 rounded-none px-0 text-primary underline-offset-4 hover:underline",
@@ -34,11 +37,26 @@ export type ButtonProps = React.ComponentProps<"button"> &
     loading?: boolean;
   };
 
-export function Button({ className, variant, size, asChild, loading, children, disabled, ...props }: ButtonProps) {
+export function Button({
+  className,
+  variant,
+  size,
+  asChild,
+  loading,
+  children,
+  disabled,
+  ...props
+}: ButtonProps) {
   const Comp = asChild ? Slot : "button";
   return (
-    <Comp className={cn(buttonVariants({ variant, size }), className)} disabled={disabled || loading} {...props}>
-      {loading ? <LoaderCircle aria-hidden className="size-4 animate-spin" /> : null}
+    <Comp
+      className={cn(buttonVariants({ variant, size }), className)}
+      disabled={disabled || loading}
+      {...props}
+    >
+      {loading ? (
+        <LoaderCircle aria-hidden className="size-4 animate-spin" />
+      ) : null}
       {children}
     </Comp>
   );

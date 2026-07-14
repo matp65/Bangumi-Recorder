@@ -1,17 +1,37 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { api } from "@/lib/api/client";
 import type { UserInfo } from "@/lib/api/types";
-import { clearStoredSession, getStoredToken, getStoredUsername, isTokenExpired, storeSession } from "@/lib/auth-storage";
+import {
+  clearStoredSession,
+  getStoredToken,
+  getStoredUsername,
+  isTokenExpired,
+  storeSession,
+} from "@/lib/auth-storage";
 
 interface AuthContextValue {
   hydrated: boolean;
   token: string | null;
   username: string | null;
   user: UserInfo | null;
-  login: (username: string, password: string) => Promise<{ ok: boolean; message?: string }>;
-  register: (username: string, password: string, registerToken?: string) => Promise<{ ok: boolean; message?: string }>;
+  login: (
+    username: string,
+    password: string,
+  ) => Promise<{ ok: boolean; message?: string }>;
+  register: (
+    username: string,
+    password: string,
+    registerToken?: string,
+  ) => Promise<{ ok: boolean; message?: string }>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   updateLocalUser: (patch: Partial<UserInfo>) => void;
@@ -56,28 +76,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     window.addEventListener("bangumi-recorder:session-expired", logout);
-    return () => window.removeEventListener("bangumi-recorder:session-expired", logout);
+    return () =>
+      window.removeEventListener("bangumi-recorder:session-expired", logout);
   }, [logout]);
 
   const login = useCallback(async (name: string, password: string) => {
     const response = await api.login(name, password);
-    if (response.status !== 0 || !response.data?.token) return { ok: false, message: response.message };
+    if (response.status !== 0 || !response.data?.token)
+      return { ok: false, message: response.message };
     storeSession(response.data.token, name);
     setToken(response.data.token);
     setUsername(name);
     return { ok: true };
   }, []);
 
-  const register = useCallback(async (name: string, password: string, registerToken?: string) => {
-    const response = await api.register(name, password, registerToken);
-    if (response.status !== 0 || !response.data?.token) return { ok: false, message: response.message };
-    storeSession(response.data.token, name);
-    setToken(response.data.token);
-    setUsername(name);
-    return { ok: true };
-  }, []);
+  const register = useCallback(
+    async (name: string, password: string, registerToken?: string) => {
+      const response = await api.register(name, password, registerToken);
+      if (response.status !== 0 || !response.data?.token)
+        return { ok: false, message: response.message };
+      storeSession(response.data.token, name);
+      setToken(response.data.token);
+      setUsername(name);
+      return { ok: true };
+    },
+    [],
+  );
 
-  const value = useMemo<AuthContextValue>(() => ({ hydrated, token, username, user, login, register, logout, refreshUser, updateLocalUser: (patch) => setUser((current) => current ? { ...current, ...patch } : current) }), [hydrated, token, username, user, login, register, logout, refreshUser]);
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      hydrated,
+      token,
+      username,
+      user,
+      login,
+      register,
+      logout,
+      refreshUser,
+      updateLocalUser: (patch) =>
+        setUser((current) => (current ? { ...current, ...patch } : current)),
+    }),
+    [hydrated, token, username, user, login, register, logout, refreshUser],
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

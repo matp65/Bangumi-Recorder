@@ -2,11 +2,15 @@ const TOKEN_KEY = "token";
 const USERNAME_KEY = "username";
 
 export function getStoredToken() {
-  return typeof window === "undefined" ? null : window.localStorage.getItem(TOKEN_KEY);
+  return typeof window === "undefined"
+    ? null
+    : window.localStorage.getItem(TOKEN_KEY);
 }
 
 export function getStoredUsername() {
-  return typeof window === "undefined" ? null : window.localStorage.getItem(USERNAME_KEY);
+  return typeof window === "undefined"
+    ? null
+    : window.localStorage.getItem(USERNAME_KEY);
 }
 
 export function storeSession(token: string, username: string) {
@@ -24,9 +28,18 @@ export function decodeJwtExpiration(token: string): number | null {
   try {
     const payload = token.split(".")[1];
     if (!payload) return null;
-    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
+    const base64 = payload
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(Math.ceil(payload.length / 4) * 4, "=");
     const value: unknown = JSON.parse(atob(base64));
-    if (!value || typeof value !== "object" || !("exp" in value) || typeof value.exp !== "number") return null;
+    if (
+      !value ||
+      typeof value !== "object" ||
+      !("exp" in value) ||
+      typeof value.exp !== "number"
+    )
+      return null;
     return value.exp;
   } catch {
     return null;

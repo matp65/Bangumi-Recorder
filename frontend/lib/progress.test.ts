@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { buildProgress, formatSeconds, parseProgress, progressPercent } from "./progress";
+import {
+  buildProgress,
+  formatSeconds,
+  parseProgress,
+  progressPercent,
+} from "./progress";
 
 describe("recording progress", () => {
   it("round-trips episode and playback time", () => {
-    expect(parseProgress(buildProgress(8, "12:04"))).toEqual({ episode: 8, time: "12:04" });
+    expect(parseProgress(buildProgress(8, "12:04"))).toEqual({
+      episode: 8,
+      time: "12:04",
+    });
   });
 
   it("handles empty and episode-only records", () => {

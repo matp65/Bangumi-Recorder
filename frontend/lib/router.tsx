@@ -31,11 +31,29 @@ export function navigate(href: string, options?: { replace?: boolean }) {
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
-export function AppLink({ href, onClick, ...props }: React.ComponentProps<"a"> & { href: string }) {
-  return <a href={href} onClick={(event) => {
-    onClick?.(event);
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    navigate(href);
-  }} {...props} />;
+export function AppLink({
+  href,
+  onClick,
+  ...props
+}: React.ComponentProps<"a"> & { href: string }) {
+  return (
+    <a
+      href={href}
+      onClick={(event) => {
+        onClick?.(event);
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        )
+          return;
+        event.preventDefault();
+        navigate(href);
+      }}
+      {...props}
+    />
+  );
 }
