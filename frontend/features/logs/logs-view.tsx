@@ -48,6 +48,7 @@ const recordingActions = [
   "recorder_changed",
   "status_changed",
   "recording_created",
+  "recording_restored",
   "other_metadata_changed",
   "episode_created",
   "episode_updated",
@@ -61,6 +62,9 @@ const systemActions = [
   "api_token_deleted",
   "recording_logs_read",
   "system_logs_read",
+  "stale_episode_metadata_cleaned",
+  "animeko_episode_ordinals_repaired",
+  "episode_ordinal_compatibility_mapped",
 ];
 
 export function LogsView() {
@@ -581,48 +585,53 @@ function LogDetail({
   const recording = item && "target_type" in item ? item : null;
   return (
     <Dialog open={Boolean(item)} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
+        <DialogHeader className="border-b border-border px-5 py-4 sm:px-6 sm:py-5">
           <DialogTitle>日志详情</DialogTitle>
           <DialogDescription>
             {item ? `${formatDate(item.created_at, true)} · #${item.id}` : ""}
           </DialogDescription>
         </DialogHeader>
         {item ? (
-          <div className="grid gap-4">
-            <div className="grid gap-3 rounded-xl border border-border bg-muted/35 p-4 text-sm sm:grid-cols-2">
-              <Meta label="动作" value={actionLabel(item.action)} />
-              <Meta
-                label={recording ? "对象" : "类别"}
-                value={
-                  recording
-                    ? targetLabel(recording)
-                    : (item as SystemLogItem).category
-                }
-              />
-              {recording ? (
-                <Meta label="字段" value={recording.field_name || "—"} />
-              ) : (
+          <div
+            data-slot="log-detail-scroll"
+            className="min-h-0 touch-pan-y overflow-y-auto overscroll-contain px-5 py-4 [scrollbar-gutter:stable] [-webkit-overflow-scrolling:touch] sm:px-6 sm:py-5"
+          >
+            <div className="grid gap-4 pb-[env(safe-area-inset-bottom)]">
+              <div className="grid gap-3 rounded-xl border border-border bg-muted/35 p-4 text-sm sm:grid-cols-2">
+                <Meta label="动作" value={actionLabel(item.action)} />
                 <Meta
-                  label="用户"
-                  value={(item as SystemLogItem).username || "—"}
+                  label={recording ? "对象" : "类别"}
+                  value={
+                    recording
+                      ? targetLabel(recording)
+                      : (item as SystemLogItem).category
+                  }
                 />
+                {recording ? (
+                  <Meta label="字段" value={recording.field_name || "—"} />
+                ) : (
+                  <Meta
+                    label="用户"
+                    value={(item as SystemLogItem).username || "—"}
+                  />
+                )}
+              </div>
+              {recording ? (
+                <>
+                  <RawBlock title="旧值" value={recording.old_value} />
+                  <RawBlock title="新值" value={recording.new_value} />
+                  <RawBlock title="扩展数据" value={recording.metadata} />
+                </>
+              ) : (
+                <>
+                  <p className="text-sm leading-relaxed">
+                    {(item as SystemLogItem).message}
+                  </p>
+                  <RawBlock title="扩展数据" value={item.metadata} />
+                </>
               )}
             </div>
-            {recording ? (
-              <>
-                <RawBlock title="旧值" value={recording.old_value} />
-                <RawBlock title="新值" value={recording.new_value} />
-                <RawBlock title="扩展数据" value={recording.metadata} />
-              </>
-            ) : (
-              <>
-                <p className="text-sm leading-relaxed">
-                  {(item as SystemLogItem).message}
-                </p>
-                <RawBlock title="扩展数据" value={item.metadata} />
-              </>
-            )}
           </div>
         ) : null}
       </DialogContent>
@@ -634,7 +643,7 @@ function RawBlock({ title, value }: { title: string; value: unknown }) {
   return (
     <div>
       <div className="mb-2 text-sm font-semibold">{title}</div>
-      <pre className="max-h-56 overflow-auto rounded-xl bg-foreground p-4 font-mono text-xs leading-relaxed text-background whitespace-pre-wrap break-words">
+      <pre className="overflow-x-auto rounded-xl border border-border bg-muted/70 p-4 font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words">
         {formatUnknown(value, true)}
       </pre>
     </div>

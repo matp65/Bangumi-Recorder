@@ -25,6 +25,13 @@ const episodeLog: RecordingLogItem = {
 describe("log transforms", () => {
   it("maps backend actions to user-facing labels", () => {
     expect(actionLabel("episode_updated")).toBe("剧集记录更新");
+    expect(actionLabel("recording_restored")).toBe("恢复记录");
+    expect(actionLabel("stale_episode_metadata_cleaned")).toBe(
+      "清理过期剧集元数据",
+    );
+    expect(actionLabel("episode_ordinal_compatibility_mapped")).toBe(
+      "兼容映射剧集序号",
+    );
     expect(actionLabel("future_action")).toBe("future_action");
   });
 

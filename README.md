@@ -191,9 +191,11 @@ cargo build --release
 |------|------|------|
 | GET | `/api/v2/bangumi/:id/episodes` | 获取剧集元数据列表（爬取 bgm.tv 并缓存，24h TTL，`?force=true` 强制刷新） |
 | GET | `/api/v2/records/bangumi/:id/episodes` | 获取单集追踪状态（含元数据合并，`?force=true` 强制刷新缓存） |
-| PATCH | `/api/v2/records/bangumi/:id/episodes/:ordinal` | 更新单集进度 `{"watched","progress_seconds","duration_seconds"}` |
+| PATCH | `/api/v2/records/bangumi/:id/episodes/:ordinal` | 更新单集进度 `{"watched","progress_seconds","duration_seconds"}`；若 Subject 从 74 等非 1 编号开始，兼容将季内 `1` 映射为真实 `74`，并在响应 `message` 返回 Warning |
 
 更新单集时会自动同步主表 `recorder` 字段：集数 = max(ordinal where watched=1)，时间 = max(progress_seconds) 格式化为 mm:ss。
+
+剧集元数据缓存以每次完整抓取的 `fetch_generation` 为快照边界。未出现在最新完整快照中的行先标记为 stale，连续两次完整抓取均缺失后才会删除；该清理仅作用于 `bangumi_episodes`，不会删除用户的 `episode_records`，并会把 Subject ID、清理数量和 ordinal 写入系统日志。完整缓存同样遵循 24 小时 TTL，空标题或空中文名视为不完整；`force=true` 会生成新快照并参与相同的安全清理流程。
 
 #### 日志与设置（Bearer Token）
 
@@ -211,7 +213,7 @@ cargo build --release
 |------|------|------|
 | POST | `/api/v2/sync` | 批量同步（一轮往返，更新仲裁按较新时间戳胜出） |
 | GET | `/api/v2/sync/incremental?since=` | 增量同步（返回指定时间戳后变更的记录） |
-| POST | `/api/v2/sync_ani` | Animeko 游标式主记录 + 全量单集双向同步，支持删除墓碑、客户端时间戳、revision 和年度总结日志 |
+| POST | `/api/v2/sync_ani` | Animeko 游标式主记录 + 全量单集双向同步；写入前校验 ordinal 必须存在于当前剧集元数据 |
 
 #### 开放接口（API Token 鉴权）
 

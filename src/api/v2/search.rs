@@ -262,17 +262,32 @@ pub async fn get_bangumi_episodes(
         }
     };
 
-    ensure_episode_metadata_cached(&pool, easy_id, &id_str, force).await;
+    if let Err(error) = ensure_episode_metadata_cached(&pool, easy_id, &id_str, force).await {
+        log::warn!(
+            "Unable to refresh episode metadata for Bangumi {}: {}",
+            id,
+            error
+        );
+    }
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query_as::<
+        _,
+        (
+            i32,
+            Option<String>,
+            Option<String>,
+            Option<NaiveDate>,
+            Option<String>,
+        ),
+    >(
         r#"
         SELECT ordinal, title, name_cn, airdate, duration
         FROM bangumi_episodes
         WHERE bangumi_easy_id = ?
         ORDER BY ordinal ASC
         "#,
-        easy_id
     )
+    .bind(easy_id)
     .fetch_all(&pool)
     .await;
 
@@ -281,11 +296,11 @@ pub async fn get_bangumi_episodes(
             let episodes: Vec<BangumiEpisodeMeta> = rows
                 .into_iter()
                 .map(|r| BangumiEpisodeMeta {
-                    ordinal: r.ordinal,
-                    title: r.title,
-                    name_cn: r.name_cn,
-                    airdate: r.airdate,
-                    duration: r.duration,
+                    ordinal: r.0,
+                    title: r.1,
+                    name_cn: r.2,
+                    airdate: r.3,
+                    duration: r.4,
                 })
                 .collect();
             success(episodes)

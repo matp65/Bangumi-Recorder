@@ -6,6 +6,7 @@ export const ACTION_LABELS: Record<string, string> = {
   recorder_changed: "进度变更",
   status_changed: "状态变更",
   recording_created: "创建记录",
+  recording_restored: "恢复记录",
   other_metadata_changed: "自定义条目变更",
   episode_created: "剧集记录创建",
   episode_updated: "剧集记录更新",
@@ -18,6 +19,9 @@ export const ACTION_LABELS: Record<string, string> = {
   api_token_deleted: "删除 API Token",
   recording_logs_read: "读取记录日志",
   system_logs_read: "读取系统日志",
+  stale_episode_metadata_cleaned: "清理过期剧集元数据",
+  animeko_episode_ordinals_repaired: "修复 Animeko 剧集序号",
+  episode_ordinal_compatibility_mapped: "兼容映射剧集序号",
 };
 
 export function actionLabel(action: string) {

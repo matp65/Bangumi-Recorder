@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use axum::{
     Json,
@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{MySql, MySqlPool, Row, Transaction};
 
+use super::episodes::ensure_episode_metadata_cached;
 use super::response::{ApiResponse, bad_request, internal_error, success};
 use crate::api::logs::{LogTarget, write_recording_log};
 use crate::auth_bearer::AuthUser;
@@ -20,9 +21,9 @@ const MAX_RECORDS_PER_REQUEST: usize = 10_000;
 
 struct PendingRecordingLog {
     recording_id: u32,
-    bangumi_id: u32,
+    bangumi_easy_id: u32,
     action: &'static str,
-    field_name: &'static str,
+    field_name: Option<&'static str>,
     old_value: Option<Value>,
     new_value: Option<Value>,
     metadata: Value,
@@ -168,6 +169,8 @@ async fn sync(
         }
     }
 
+    validate_episode_ordinals(pool, &body.records).await?;
+
     let mut tx = pool.begin().await?;
     let mut response_subjects = BTreeSet::new();
     let mut pending_logs = Vec::new();
@@ -204,9 +207,9 @@ async fn sync(
             pool,
             entry.recording_id,
             Some(user_id),
-            LogTarget::Bangumi(entry.bangumi_id),
+            LogTarget::Bangumi(entry.bangumi_easy_id),
             entry.action,
-            Some(entry.field_name),
+            entry.field_name,
             entry.old_value,
             entry.new_value,
             Some(entry.metadata),
@@ -227,6 +230,87 @@ async fn sync(
         next_cursor: next_cursor.to_string(),
         has_more,
     })
+}
+
+async fn ensure_bangumi_in_pool(pool: &MySqlPool, bangumi_id: u32) -> Result<u32, sqlx::Error> {
+    let external_id = bangumi_id.to_string();
+    sqlx::query(
+        "INSERT INTO bangumi_info_easy (external_id, title, type) VALUES (?, ?, 8) \
+         ON DUPLICATE KEY UPDATE external_id = VALUES(external_id)",
+    )
+    .bind(&external_id)
+    .bind(format!("Bangumi #{bangumi_id}"))
+    .execute(pool)
+    .await?;
+    sqlx::query_scalar::<_, u32>("SELECT id FROM bangumi_info_easy WHERE external_id = ?")
+        .bind(external_id)
+        .fetch_one(pool)
+        .await
+}
+
+async fn cached_episode_ordinals(
+    pool: &MySqlPool,
+    easy_id: u32,
+) -> Result<BTreeSet<i32>, sqlx::Error> {
+    Ok(sqlx::query_scalar::<_, i32>(
+        "SELECT ordinal FROM bangumi_episodes WHERE bangumi_easy_id = ?",
+    )
+    .bind(easy_id)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .collect())
+}
+
+async fn validate_episode_ordinals(
+    pool: &MySqlPool,
+    records: &[SyncAniRecordInput],
+) -> Result<(), SyncAniError> {
+    let mut requested = BTreeMap::<u32, BTreeSet<i32>>::new();
+    for record in records
+        .iter()
+        .filter(|record| !record.is_delete && !record.episodes.is_empty())
+    {
+        requested
+            .entry(record.bangumi_id)
+            .or_default()
+            .extend(record.episodes.iter().map(|episode| episode.ordinal));
+    }
+
+    for (bangumi_id, requested_ordinals) in requested {
+        let easy_id = ensure_bangumi_in_pool(pool, bangumi_id).await?;
+        let mut known_ordinals = cached_episode_ordinals(pool, easy_id).await?;
+        if known_ordinals.is_empty() {
+            if let Err(error) =
+                ensure_episode_metadata_cached(pool, easy_id, &bangumi_id.to_string(), false).await
+            {
+                log::warn!(
+                    "Unable to populate episode metadata before Animeko sync for Bangumi {}: {}",
+                    bangumi_id,
+                    error
+                );
+            }
+            known_ordinals = cached_episode_ordinals(pool, easy_id).await?;
+        }
+
+        let missing = requested_ordinals
+            .difference(&known_ordinals)
+            .copied()
+            .collect::<Vec<_>>();
+        if !missing.is_empty() {
+            return Err(SyncAniError::Invalid(format!(
+                "Episode ordinal(s) {} do not exist in cached metadata for Bangumi {}",
+                missing
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                bangumi_id
+            )));
+        }
+    }
+
+    Ok(())
 }
 
 async fn ensure_bangumi(
@@ -285,33 +369,55 @@ async fn apply_record(
             .bind(id)
             .execute(&mut **tx)
             .await?;
-            let action = match (old_is_delete, input.is_delete) {
-                (false, true) => "sync_ani_record_deleted",
-                (true, false) => "sync_ani_record_restored",
-                _ => "sync_ani_record_updated",
-            };
-            pending_logs.push(PendingRecordingLog {
-                recording_id: id,
-                bangumi_id: input.bangumi_id,
-                action,
-                field_name: "record",
-                old_value: Some(json!({
-                    "recorder": old_recorder,
-                    "user_status": old_status,
-                    "is_delete": old_is_delete,
-                    "updated_at": server_updated_at,
-                })),
-                new_value: Some(json!({
-                    "recorder": input.recorder,
-                    "user_status": input.user_status,
-                    "is_delete": input.is_delete,
-                    "updated_at": input.updated_at,
-                })),
-                metadata: json!({
-                    "source": "animeko",
-                    "client_updated_at": input.updated_at,
-                }),
-            });
+            if old_recorder != input.recorder {
+                pending_logs.push(PendingRecordingLog {
+                    recording_id: id,
+                    bangumi_easy_id: easy_id,
+                    action: "recorder_changed",
+                    field_name: Some("recorder"),
+                    old_value: old_recorder.as_ref().map(|value| json!(value)),
+                    new_value: input.recorder.as_ref().map(|value| json!(value)),
+                    metadata: json!({
+                        "source": "animeko",
+                        "bangumi_id": input.bangumi_id,
+                        "client_updated_at": input.updated_at,
+                    }),
+                });
+            }
+            if old_status != input.user_status {
+                pending_logs.push(PendingRecordingLog {
+                    recording_id: id,
+                    bangumi_easy_id: easy_id,
+                    action: "status_changed",
+                    field_name: Some("status"),
+                    old_value: Some(json!(old_status)),
+                    new_value: Some(json!(input.user_status)),
+                    metadata: json!({
+                        "source": "animeko",
+                        "bangumi_id": input.bangumi_id,
+                        "client_updated_at": input.updated_at,
+                    }),
+                });
+            }
+            if old_is_delete != input.is_delete {
+                pending_logs.push(PendingRecordingLog {
+                    recording_id: id,
+                    bangumi_easy_id: easy_id,
+                    action: if input.is_delete {
+                        "recording_deleted"
+                    } else {
+                        "recording_restored"
+                    },
+                    field_name: Some("is_delete"),
+                    old_value: Some(json!(old_is_delete)),
+                    new_value: Some(json!(input.is_delete)),
+                    metadata: json!({
+                        "source": "animeko",
+                        "bangumi_id": input.bangumi_id,
+                        "client_updated_at": input.updated_at,
+                    }),
+                });
+            }
             (id, input.is_delete)
         } else {
             (id, old_is_delete)
@@ -350,15 +456,15 @@ async fn apply_record(
         let id = result.last_insert_id() as u32;
         pending_logs.push(PendingRecordingLog {
             recording_id: id,
-            bangumi_id: input.bangumi_id,
+            bangumi_easy_id: easy_id,
             action: if input.is_delete {
-                "sync_ani_record_deleted"
+                "recording_deleted"
             } else if latest_tombstone_at.is_some() {
-                "sync_ani_record_restored"
+                "recording_restored"
             } else {
-                "sync_ani_record_created"
+                "recording_created"
             },
-            field_name: "record",
+            field_name: None,
             old_value: latest_tombstone_at.map(|deleted_at| {
                 json!({
                     "is_delete": true,
@@ -374,6 +480,7 @@ async fn apply_record(
             })),
             metadata: json!({
                 "source": "animeko",
+                "bangumi_id": input.bangumi_id,
                 "client_updated_at": input.updated_at,
             }),
         });
@@ -382,7 +489,15 @@ async fn apply_record(
 
     if !is_delete {
         for episode in &input.episodes {
-            apply_episode(tx, recording_id, input.bangumi_id, episode, pending_logs).await?;
+            apply_episode(
+                tx,
+                recording_id,
+                easy_id,
+                input.bangumi_id,
+                episode,
+                pending_logs,
+            )
+            .await?;
         }
     }
     Ok(())
@@ -391,6 +506,7 @@ async fn apply_record(
 async fn apply_episode(
     tx: &mut Transaction<'_, MySql>,
     recording_id: u32,
+    bangumi_easy_id: u32,
     bangumi_id: u32,
     input: &SyncAniEpisodeInput,
     pending_logs: &mut Vec<PendingRecordingLog>,
@@ -427,16 +543,11 @@ async fn apply_episode(
             .bind(input.ordinal)
             .execute(&mut **tx)
             .await?;
-            let action = match (old_watched, input.watched) {
-                (false, true) => "sync_ani_episode_completed",
-                (true, false) => "sync_ani_episode_reopened",
-                _ => "sync_ani_episode_progress_updated",
-            };
             pending_logs.push(PendingRecordingLog {
                 recording_id,
-                bangumi_id,
-                action,
-                field_name: "episode",
+                bangumi_easy_id,
+                action: "episode_updated",
+                field_name: None,
                 old_value: Some(json!({
                     "ordinal": input.ordinal,
                     "watched": old_watched,
@@ -455,6 +566,7 @@ async fn apply_episode(
                 })),
                 metadata: json!({
                     "source": "animeko",
+                    "bangumi_id": bangumi_id,
                     "ordinal": input.ordinal,
                     "client_updated_at": input.updated_at,
                 }),
@@ -478,13 +590,9 @@ async fn apply_episode(
         .await?;
         pending_logs.push(PendingRecordingLog {
             recording_id,
-            bangumi_id,
-            action: if input.watched {
-                "sync_ani_episode_completed"
-            } else {
-                "sync_ani_episode_progress_created"
-            },
-            field_name: "episode",
+            bangumi_easy_id,
+            action: "episode_created",
+            field_name: None,
             old_value: None,
             new_value: Some(json!({
                 "ordinal": input.ordinal,
@@ -496,6 +604,7 @@ async fn apply_episode(
             })),
             metadata: json!({
                 "source": "animeko",
+                "bangumi_id": bangumi_id,
                 "ordinal": input.ordinal,
                 "client_updated_at": input.updated_at,
             }),
@@ -691,6 +800,22 @@ mod tests {
         .unwrap()
         .last_insert_id() as i64;
         let bangumi_id = 900_000_000 + (unique.as_u128() % 90_000_000) as u32;
+        let easy_id = ensure_bangumi_in_pool(&pool, bangumi_id).await.unwrap();
+        for ordinal in [1, 2] {
+            sqlx::query(
+                "INSERT INTO bangumi_episodes \
+                 (bangumi_easy_id, ordinal, ep_label, title, name_cn, fetch_generation) \
+                 VALUES (?, ?, ?, ?, ?, 'sync-ani-live-test')",
+            )
+            .bind(easy_id)
+            .bind(ordinal)
+            .bind(ordinal.to_string())
+            .bind(format!("Episode {ordinal}"))
+            .bind(format!("Episode {ordinal}"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
 
         let result = async {
             let t1 = time("2024-01-01T01:00:00.000001");
@@ -700,6 +825,29 @@ mod tests {
             let t5 = time("2024-01-01T05:00:00.000005");
             let t6 = time("2024-01-01T06:00:00.000006");
             let t7 = time("2024-01-01T07:00:00.000007");
+
+            let mut invalid = record(bangumi_id, "invalid", 1, false, t1);
+            invalid.episodes[0].ordinal = 3;
+            let invalid_result = sync(
+                &pool,
+                user_id,
+                SyncAniRequest {
+                    cursor: Some("0".to_string()),
+                    limit: None,
+                    records: vec![invalid],
+                },
+            )
+            .await;
+            assert!(matches!(invalid_result, Err(SyncAniError::Invalid(_))));
+            let recording_count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM recordings WHERE user_id = ? AND bangumi_id = ?",
+            )
+            .bind(user_id)
+            .bind(easy_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(recording_count, 0);
 
             let initial = sync(
                 &pool,
@@ -778,12 +926,6 @@ mod tests {
             .unwrap();
             assert_eq!(newer.records[0].user_status, Some(2));
 
-            let easy_id: u32 =
-                sqlx::query_scalar("SELECT id FROM bangumi_info_easy WHERE external_id = ?")
-                    .bind(bangumi_id.to_string())
-                    .fetch_one(&pool)
-                    .await
-                    .unwrap();
             sqlx::query(
                 "UPDATE recordings SET recorder = 'remote-newer', status = 3, updated_at = ? \
                  WHERE user_id = ? AND bangumi_id = ?",
@@ -941,20 +1083,27 @@ mod tests {
             .fetch_all(&pool)
             .await
             .unwrap();
+            assert!(log_actions.iter().any(|action| action == "episode_created"));
             assert!(
                 log_actions
                     .iter()
-                    .any(|action| action == "sync_ani_episode_completed")
+                    .any(|action| action == "recording_deleted")
             );
             assert!(
                 log_actions
                     .iter()
-                    .any(|action| action == "sync_ani_record_deleted")
+                    .any(|action| action == "recording_restored")
             );
             assert!(
                 log_actions
                     .iter()
-                    .any(|action| action == "sync_ani_record_restored")
+                    .any(|action| action == "recorder_changed")
+            );
+            assert!(log_actions.iter().any(|action| action == "status_changed"));
+            assert!(
+                log_actions
+                    .iter()
+                    .all(|action| !action.starts_with("sync_ani_"))
             );
         }
         .await;

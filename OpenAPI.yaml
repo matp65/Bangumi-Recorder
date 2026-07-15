@@ -777,6 +777,11 @@ paths:
   /api/v2/records/bangumi/{id}/episodes/{ordinal}:
     patch:
       summary: 更新单集进度
+      description: |
+        优先把 ordinal 当作 Bangumi Subject 的真实集号。若真实集号不存在、且该 Subject
+        明显采用全局偏移的正片编号，则兼容按正片顺序映射，例如请求 1 可映射为 74。
+        映射成功时 HTTP 状态仍为 200、status 仍为 0，实际 ordinal 返回在 data.ordinal，
+        同时 message 包含 Warning；调用方应改为直接提交真实 Subject ordinal。
       tags: [单集追踪]
       security: [{ BearerJWT: [] }]
       parameters:
@@ -802,7 +807,7 @@ paths:
                 duration_seconds: { type: integer, description: "单集总时长（秒），Animeko 退出时提交" }
       responses:
         "200":
-          description: 更新后的单集进度
+          description: 更新后的单集进度；发生兼容映射时 message 包含 Warning
           content:
             application/json:
               schema:
@@ -1528,6 +1533,9 @@ paths:
   /api/v2/open/episodes/{bangumi_id}/{ordinal}:
     patch:
       summary: 更新单集进度（API Token 鉴权）
+      description: |
+        与 JWT 普通接口一致，支持把季内相对集号按正片顺序映射为 Bangumi Subject ordinal。
+        发生映射时 data.ordinal 为实际写入值，message 包含 Warning。
       tags: [开放接口]
       security:
         - BearerApiToken: []
@@ -1557,7 +1565,7 @@ paths:
                 duration_seconds: { type: integer }
       responses:
         "200":
-          description: 更新后的单集
+          description: 更新后的单集；发生兼容映射时 message 包含 Warning
           content:
             application/json:
               schema:
@@ -1625,6 +1633,7 @@ paths:
   /api/v2/sync_ani:
     post:
       summary: 游标式记录与单集双向同步（JWT）
+      description: Animeko 提交的每个单集 ordinal 必须存在于 BR 当前有效的 Bangumi 剧集元数据缓存；无效 ordinal 会拒绝整批写入。所有成功变更写入通用记录日志事件。
       tags: [同步]
       security:
         - BearerJWT: []
@@ -1653,7 +1662,8 @@ paths:
         Animeko 使用的同步接口。API Token 应通过 Authorization Header 传输；
         token 查询参数仅保留用于旧客户端兼容；
         等时间戳冲突固定由服务端获胜。响应游标来自永久 change stream，软删除记录
-        被物理清理后仍会返回删除墓碑。
+        被物理清理后仍会返回删除墓碑。提交的每个单集 ordinal 必须存在于 BR 当前有效的
+        Bangumi 剧集元数据缓存；无效 ordinal 会拒绝整批写入。
       tags: [开放接口]
       security:
         - BearerApiToken: []
@@ -2084,7 +2094,7 @@ components:
         target_id: { type: integer, nullable: true }
         action:
           type: string
-          description: "事件类型，如 recording_created、recorder_changed、status_changed、episode_updated、recording_deleted"
+          description: "通用事件类型，如 recording_created、recording_restored、recorder_changed、status_changed、episode_updated、recording_deleted；包括 Animeko 同步产生的变更"
         field_name: { type: string, nullable: true }
         old_value:
           nullable: true

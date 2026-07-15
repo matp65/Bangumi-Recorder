@@ -22,6 +22,20 @@ pub fn success<T: Serialize>(data: T) -> (StatusCode, Json<ApiResponse<T>>) {
     )
 }
 
+pub fn success_with_message<T: Serialize>(
+    data: T,
+    message: impl Into<String>,
+) -> (StatusCode, Json<ApiResponse<T>>) {
+    (
+        StatusCode::OK,
+        Json(ApiResponse {
+            status: 0,
+            data: Some(data),
+            message: Some(message.into()),
+        }),
+    )
+}
+
 pub fn success_empty() -> (StatusCode, Json<ApiResponse<()>>) {
     (
         StatusCode::OK,
