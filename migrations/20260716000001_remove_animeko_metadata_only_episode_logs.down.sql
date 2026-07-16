@@ -1,0 +1,2 @@
+-- The removed rows contained no change shown by the recording-log list and
+-- cannot be reconstructed safely.

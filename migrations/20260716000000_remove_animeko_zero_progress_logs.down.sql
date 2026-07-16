@@ -1,0 +1,2 @@
+-- The removed rows represented no user-visible playback change and cannot be
+-- reconstructed safely.

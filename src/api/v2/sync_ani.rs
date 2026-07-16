@@ -525,6 +525,12 @@ async fn apply_episode(
         let old_progress_seconds = row.try_get::<Option<i32>, _>("progress_seconds")?;
         let old_duration_seconds = row.try_get::<Option<i32>, _>("duration_seconds")?;
         let old_completed_at = row.try_get::<Option<NaiveDateTime>, _>("completed_at")?;
+        let has_user_visible_change = episode_update_has_user_visible_change(
+            old_watched,
+            old_progress_seconds,
+            old_duration_seconds,
+            input,
+        );
         let differs = old_watched != input.watched
             || old_progress_seconds != input.progress_seconds
             || old_duration_seconds != input.duration_seconds
@@ -543,34 +549,36 @@ async fn apply_episode(
             .bind(input.ordinal)
             .execute(&mut **tx)
             .await?;
-            pending_logs.push(PendingRecordingLog {
-                recording_id,
-                bangumi_easy_id,
-                action: "episode_updated",
-                field_name: None,
-                old_value: Some(json!({
-                    "ordinal": input.ordinal,
-                    "watched": old_watched,
-                    "progress_seconds": old_progress_seconds,
-                    "duration_seconds": old_duration_seconds,
-                    "completed_at": old_completed_at,
-                    "updated_at": server_updated_at,
-                })),
-                new_value: Some(json!({
-                    "ordinal": input.ordinal,
-                    "watched": input.watched,
-                    "progress_seconds": input.progress_seconds,
-                    "duration_seconds": input.duration_seconds,
-                    "completed_at": input.completed_at,
-                    "updated_at": input.updated_at,
-                })),
-                metadata: json!({
-                    "source": "animeko",
-                    "bangumi_id": bangumi_id,
-                    "ordinal": input.ordinal,
-                    "client_updated_at": input.updated_at,
-                }),
-            });
+            if has_user_visible_change {
+                pending_logs.push(PendingRecordingLog {
+                    recording_id,
+                    bangumi_easy_id,
+                    action: "episode_updated",
+                    field_name: None,
+                    old_value: Some(json!({
+                        "ordinal": input.ordinal,
+                        "watched": old_watched,
+                        "progress_seconds": old_progress_seconds,
+                        "duration_seconds": old_duration_seconds,
+                        "completed_at": old_completed_at,
+                        "updated_at": server_updated_at,
+                    })),
+                    new_value: Some(json!({
+                        "ordinal": input.ordinal,
+                        "watched": input.watched,
+                        "progress_seconds": input.progress_seconds,
+                        "duration_seconds": input.duration_seconds,
+                        "completed_at": input.completed_at,
+                        "updated_at": input.updated_at,
+                    })),
+                    metadata: json!({
+                        "source": "animeko",
+                        "bangumi_id": bangumi_id,
+                        "ordinal": input.ordinal,
+                        "client_updated_at": input.updated_at,
+                    }),
+                });
+            }
         }
     } else {
         sqlx::query(
@@ -611,6 +619,21 @@ async fn apply_episode(
         });
     }
     Ok(())
+}
+
+fn episode_update_has_user_visible_change(
+    old_watched: bool,
+    old_progress_seconds: Option<i32>,
+    old_duration_seconds: Option<i32>,
+    input: &SyncAniEpisodeInput,
+) -> bool {
+    old_watched != input.watched
+        || normalized_progress(old_progress_seconds) != normalized_progress(input.progress_seconds)
+        || old_duration_seconds != input.duration_seconds
+}
+
+fn normalized_progress(progress_seconds: Option<i32>) -> Option<i32> {
+    progress_seconds.filter(|seconds| *seconds != 0)
 }
 
 async fn load_record(
@@ -756,6 +779,65 @@ mod tests {
         let request: SyncAniRequest =
             serde_json::from_str(r#"{"records":[],"future_capability":true}"#).unwrap();
         assert!(request.records.is_empty());
+    }
+
+    #[test]
+    fn zero_and_missing_progress_do_not_create_user_visible_episode_logs() {
+        let updated_at = time("2026-07-16T05:02:23.325");
+        let mut input = SyncAniEpisodeInput {
+            ordinal: 1,
+            watched: false,
+            progress_seconds: Some(0),
+            duration_seconds: None,
+            completed_at: None,
+            updated_at,
+        };
+
+        assert!(!episode_update_has_user_visible_change(
+            false, None, None, &input,
+        ));
+
+        input.progress_seconds = None;
+        assert!(!episode_update_has_user_visible_change(
+            false,
+            Some(0),
+            None,
+            &input,
+        ));
+
+        input.progress_seconds = Some(1);
+        assert!(episode_update_has_user_visible_change(
+            false,
+            Some(0),
+            None,
+            &input,
+        ));
+    }
+
+    #[test]
+    fn completion_timestamp_backfill_does_not_create_user_visible_episode_logs() {
+        let updated_at = time("2026-07-16T05:02:23.325");
+        let input = SyncAniEpisodeInput {
+            ordinal: 1,
+            watched: true,
+            progress_seconds: Some(1_202),
+            duration_seconds: Some(1_439),
+            completed_at: Some(time("2026-07-13T09:02:19.043")),
+            updated_at,
+        };
+
+        assert!(!episode_update_has_user_visible_change(
+            true,
+            Some(1_202),
+            Some(1_439),
+            &input,
+        ));
+        assert!(episode_update_has_user_visible_change(
+            false,
+            Some(1_202),
+            Some(1_439),
+            &input,
+        ));
     }
 
     #[test]
