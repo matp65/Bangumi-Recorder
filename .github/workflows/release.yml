@@ -1,0 +1,79 @@
+name: Build and release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Linux x86_64
+    runs-on: ubuntu-latest
+    env:
+      SQLX_OFFLINE: "true"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Prepare release package
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"
+          short_sha="${GITHUB_SHA:0:6}"
+          tag="v${version}-g${short_sha}"
+          package="bangumi-recorder-${tag}-linux-x86_64"
+
+          mkdir -p "release/${package}"
+          install -m 755 target/release/Bangumi-Recorder "release/${package}/Bangumi-Recorder"
+          cp -r migrations "release/${package}/migrations"
+          cp README.md .env.example "release/${package}/"
+
+          tar -C release -czf "release/${package}.tar.gz" "${package}"
+          sha256sum "release/${package}.tar.gz" > "release/${package}.tar.gz.sha256"
+
+          {
+            echo "tag=${tag}"
+            echo "archive=release/${package}.tar.gz"
+            echo "checksum=release/${package}.tar.gz.sha256"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          ARCHIVE: ${{ steps.release.outputs.archive }}
+          CHECKSUM: ${{ steps.release.outputs.checksum }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ARCHIVE" "$CHECKSUM" --clobber
+          else
+            gh release create "$TAG" "$ARCHIVE" "$CHECKSUM" \
+              --target "$GITHUB_SHA" \
+              --title "$TAG" \
+              --generate-notes
+          fi
