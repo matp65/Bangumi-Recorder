@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   release:
@@ -31,8 +32,38 @@ jobs:
         working-directory: frontend
         run: npm ci --include=dev
 
+      - name: Test frontend
+        working-directory: frontend
+        run: |
+          npm run lint
+          npm run typecheck
+          npm test
+
+      - name: Test backend
+        run: cargo test --locked
+
       - name: Build release binary
         run: cargo build --release --locked
+
+      - name: Determine release type
+        id: release-type
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          prerelease=true
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            merged_to_main="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+              --jq 'any(.[]; .merged_at != null and .base.ref == "main")')"
+            if [[ "$merged_to_main" == "true" ]]; then
+              prerelease=false
+            fi
+          fi
+
+          echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
 
       - name: Prepare release package
         id: release
@@ -65,15 +96,27 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
           ARCHIVE: ${{ steps.release.outputs.archive }}
           CHECKSUM: ${{ steps.release.outputs.checksum }}
+          PRERELEASE: ${{ steps.release-type.outputs.prerelease }}
         shell: bash
         run: |
           set -euo pipefail
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ARCHIVE" "$CHECKSUM" --clobber
+            if [[ "$PRERELEASE" == "false" ]]; then
+              gh release edit "$TAG" --prerelease=false
+            fi
           else
-            gh release create "$TAG" "$ARCHIVE" "$CHECKSUM" \
-              --target "$GITHUB_SHA" \
-              --title "$TAG" \
+            release_args=(
+              "$TAG"
+              "$ARCHIVE"
+              "$CHECKSUM"
+              --target "$GITHUB_SHA"
+              --title "$TAG"
               --generate-notes
+            )
+            if [[ "$PRERELEASE" == "true" ]]; then
+              release_args+=(--prerelease)
+            fi
+            gh release create "${release_args[@]}"
           fi
