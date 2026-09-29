@@ -13,22 +13,22 @@
 - **记录日志** — 记录创建、删除、进度、状态、单集进度等操作，可用于审计和年度总结
 - **用户级自动清理** — 每个用户可独立开启软删除记录 30 天后自动物理删除；服务启动时执行一次，之后每天服务器本地时间 0 点执行
 - **v2 API** — 统一的 `{status, data, message}` 响应格式 + HTTP 状态码，RESTful 路径设计
-- **自托管** — 数据完全由自己掌控，MySQL 存储
+- **自托管** — 数据完全由自己掌控，MariaDB 存储
 
 ## 技术栈
 
 | 层级 | 技术 |
 |------|------|
-| 后端 | Rust (Edition 2024), Axum 0.7, Tokio, SQLx (MySQL) |
+| 后端 | Rust (Edition 2024), Axum 0.7, Tokio, SQLx (MariaDB/MySQL 协议) |
 | 前端 | React 19, Next.js 16 App Router, TypeScript, Tailwind CSS 4, shadcn/ui + Radix UI, Motion, TanStack Query |
-| 数据库 | MariaDB |
+| 数据库 | MariaDB 11.7+ |
 | 数据来源 | 抓取 [bgm.tv](https://bgm.tv)、IMDb suggestion / OMDb API |
 
 ## 前置条件
 
 - [Rust](https://rustup.rs/) (Edition 2024)
 - [Node.js](https://nodejs.org/) >= 20.9
-- MariaDB 数据库
+- MariaDB 11.7+ 数据库（使用原生 `UUID_v7()`）
 - [sqlx-cli](https://crates.io/crates/sqlx-cli)（用于数据库迁移）
 
 ## 快速开始
@@ -89,6 +89,77 @@ cargo build --release
 ```
 
 服务启动后访问 `http://127.0.0.1:8080`。
+
+### Docker（手动运行）
+
+镜像在构建时编译前端静态文件并嵌入 Rust 二进制；运行镜像只包含该二进制及其 TLS 证书。
+
+```shell
+docker build -t bangumi-recorder:local .
+docker run --rm -p 8080:8080 --env-file .env \
+  -e LISTEN=0.0.0.0 \
+  bangumi-recorder:local
+```
+
+容器需能访问 `DATABASE_URL` 指向的 MariaDB。请在首次启动前执行数据库迁移；Dockerfile 不会自动执行迁移。`JWT_SECRET` 等敏感变量只应在运行时传入，不应写入镜像。
+
+### Docker 快速部署（Compose）
+
+这是推荐的自托管方式。Compose 会依次启动 MariaDB、一次性 `migrate` 服务和应用；`migrate` 使用 Dockerfile 中独立构建的 `sqlx-cli` 执行 `migrations/*.up.sql`，并通过 SQLx 的 `_sqlx_migrations` 记录表追踪版本。应用仅会在迁移成功后启动；历史迁移不会重复执行，且 SQLx 会校验它们未被修改。MariaDB 11.7+ 原生提供 `UUID_v7()`，不需要额外创建兼容函数。
+
+所有服务使用宿主机网络，适用于 Linux Docker Engine；Docker Desktop 4.34+ 需先启用 host networking。应用直接监听宿主机的 `APP_PORT`（默认 `8080`），MariaDB 仅监听 `127.0.0.1:MYSQL_PORT`（默认 `3306`）。这两个端口需要可用；若宿主机已有数据库，请在 `.env` 中设置其他 `MYSQL_PORT`。
+
+如需通过宿主机代理访问 Bangumi，可在 `.env` 中设置 `HTTP_PROXY=http://127.0.0.1:10808` 和 `HTTPS_PROXY=http://127.0.0.1:10808`（按实际代理端口调整）。这些变量会传给运行中的应用，构建时的 `--build-arg` 不会替代此配置。使用 `pkexec` 时也建议写入 `.env`，因为终端环境变量可能不会保留。
+
+1. 安装 Docker Engine 和 Docker Compose plugin，并确认命令可用：
+
+   ```shell
+   docker compose version
+   ```
+
+2. 创建部署配置：
+
+   ```shell
+   cp compose.env.example .env
+   openssl rand -hex 32
+   ```
+
+   编辑 `.env`，将 `MYSQL_PASSWORD`、`MYSQL_ROOT_PASSWORD` 和 `JWT_SECRET` 替换为随机值。`MYSQL_PASSWORD` 会用于构造数据库 URL，建议只使用字母、数字、`-` 与 `_`。
+
+3. 构建并在后台启动全部服务：
+
+   ```shell
+   docker compose up --build -d
+   ```
+
+   首次启动时，`migrate` 会创建数据库表并正常退出；这是预期行为，不表示服务异常。
+
+4. 确认服务已就绪：
+
+   ```shell
+   docker compose ps
+   docker compose logs migrate
+   docker compose logs -f app
+   ```
+
+   `migrate` 应以状态码 `0` 退出，随后当 `app` 显示为 healthy 后，访问 `http://127.0.0.1:8080`。如需修改对外端口，在 `.env` 中设置 `APP_PORT`，例如 `APP_PORT=18080`。
+
+常用维护命令：
+
+```shell
+# 停止服务，保留数据库数据
+docker compose down
+
+# 更新镜像/代码后重新构建并启动；如有新迁移，migrate 会只执行新增项
+docker compose up --build -d
+
+# 停止服务并删除数据库数据；下次启动会从头执行全部迁移
+docker compose down -v
+```
+
+数据库保存在名为 `mariadb-data` 的 Docker 卷。不要在已有生产数据的环境中执行 `docker compose down -v`。代理地址和密钥通过环境变量或未纳入 Git 的 `.env` 配置，不应直接写入 Compose 文件。
+
+> 从此前的 MySQL Compose 部署切换到本配置时，不能复用原来的 `mysql-data` 卷。若其中只是测试数据，先执行 `docker compose down -v --remove-orphans`，再按上述步骤启动；生产数据则应先备份并制订 MySQL 到 MariaDB 的迁移方案，不能直接挂载或清空数据卷。
 
 ## API 接口
 
